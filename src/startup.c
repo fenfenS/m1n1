@@ -14,6 +14,8 @@
 u64 boot_args_addr;
 struct boot_args cur_boot_args;
 void *adt;
+void *g_xnu_entry = 0;
+void *g_bootargs = 0;
 
 struct rela_entry {
     uint64_t off, type, addend;
@@ -158,12 +160,17 @@ void dump_boot_args(struct boot_args *ba)
 }
 
 extern void get_device_info(void);
-void _start_c(void *boot_args, void *base)
+void _start_c(void *boot_args, void *base, void *pongo_xnu_entry)
 {
     UNUSED(base);
     u32 cpu_id = 0;
 
     memset64(_bss_start, 0, _bss_end - _bss_start);
+    if (g_xnu_entry == 0) {
+        g_xnu_entry = pongo_xnu_entry;
+        g_bootargs = boot_args;
+    }
+
     boot_args_addr = (u64)boot_args;
     memcpy(&cur_boot_args, boot_args, sizeof(cur_boot_args));
 
@@ -199,7 +206,7 @@ void _start_c(void *boot_args, void *base)
     get_device_info();
 
     printf("CPU init (MIDR: 0x%lx smp_id:0x%x)...\n", mrs(MIDR_EL1), smp_id());
-    const char *type = init_cpu();
+    const char *type = "vbar-test";// init_cpu()";
     printf("  CPU: %s\n\n", type);
 
     printf("boot_args at %p\n", boot_args);

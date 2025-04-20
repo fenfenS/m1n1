@@ -30,6 +30,11 @@
 #include "wdt.h"
 #include "xnuboot.h"
 
+extern void *g_xnu_entry;
+extern void *g_bootargs;
+extern void _vt_xnu_init;
+extern u64 _vt_phy2virtOff[];
+
 struct vector_args next_stage;
 
 const char version_tag[] = "##m1n1_ver##" BUILD_TAG;
@@ -181,7 +186,14 @@ void m1n1_main(void)
 
     printf("Initialization complete.\n");
 
-    run_actions();
+    if (g_xnu_entry != 0) {
+        printf("xnu_entry from pongoOS at %p\n", g_xnu_entry);
+        printf("g_bootargs = %p; cur_boot_args=%p\n", g_bootargs, &cur_boot_args);
+        cur_boot_args.top_of_kernel_data += 0x800000;//8MB
+        next_stage.entry = g_xnu_entry;
+        next_stage.args[0] = (u64)&cur_boot_args;
+    } else
+        run_actions();
 
     if (!next_stage.entry) {
         panic("Nothing to do!\n");
@@ -201,6 +213,38 @@ void m1n1_main(void)
 #endif
 
     printf("Vectoring to next stage...\n");
+    
+    //patch atv4k kernel
+    // if(read32((u64)g_xnu_entry+0x6cbb20)  == 0xd518c000) {
+    //     write32((u64)g_xnu_entry+0x6cbb20, 0xd518c000|0xffe00000);
+    //     //make it undefined
+    //     write32((u64)g_xnu_entry+0x4010,   0xd503201f);
+    //     //there's a check in kernel, bypass it
+    // }
+    // else printf("check msr vbar offset\n");
+    // if(read32((u64)g_xnu_entry+0x6cbb30)  == 0xd5181000) {
+    //     write32((u64)g_xnu_entry+0x6cbb30, 0xd5181000|0xffe00000);
+    //     //make it undefined
+    //     write32((u64)g_xnu_entry+0x4060,   0xd503201f);
+    //     //there's a check in kernel, bypass it
+    // }
+    // else printf("check msr ttbr offset\n");
+
+    if(read32((u64)g_xnu_entry+0x3f9c) == 0xd65f03c0) {
+        // patch ret after mmu enabled; branch to _vt_xnu_init
+        u32 offsetOfRet=&_vt_xnu_init - (g_xnu_entry + 0x3f9c);
+        u32 b_insn = (0x14367edf & 0xfc000000) | offsetOfRet>>2;
+        write32((u64)g_xnu_entry+0x3f9c, b_insn);
+        printf("write 0x%x to %p\n", b_insn, g_xnu_entry+0x3f9c );
+    }
+    printf("_vt_xnu_init at %p\n", &_vt_xnu_init);
+    printf("ttbr0 = 0x%lx tcr = 0x%lx mair = 0x%lx\n", mrs(TTBR0_EL1), mrs(TCR_EL1), mrs(MAIR_EL1));
+    //save offset and ttbr0 for switch
+    _vt_phy2virtOff[0] = cur_boot_args.virt_base-cur_boot_args.phys_base;
+    _vt_phy2virtOff[1] = mrs(TTBR0_EL1);
+    _vt_phy2virtOff[2] = mrs(MAIR_EL1);
+
+    // udelay(-1);
 
     next_stage.entry(next_stage.args[0], next_stage.args[1], next_stage.args[2], next_stage.args[3],
                      next_stage.args[4]);

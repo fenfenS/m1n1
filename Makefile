@@ -160,6 +160,7 @@ OBJECTS := \
 	usb.o usb_dwc3.o usb_dwc2.o \
 	utils.o utils_asm.o \
 	vsprintf.o \
+	vt_asm.o vt_exc.o \
 	wdt.o \
 	$(DCP_OBJECTS) \
 	$(MINILZLIB_OBJECTS) $(TINF_OBJECTS) $(DLMALLOC_OBJECTS) $(LIBFDT_OBJECTS) $(RUST_LIBS)

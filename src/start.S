@@ -66,6 +66,7 @@ _vectors_start:
 .type _start, @function
 _start:
     mov x19, x0
+    mov x21, x8
 
     mov w0, 'm'
     bl debug_putc
@@ -103,6 +104,7 @@ _start:
 
     mov x0, x19
     mov x1, x20
+    mov x2, x21
     bl _start_c
     b .
 
