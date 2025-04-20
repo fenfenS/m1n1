@@ -93,8 +93,11 @@ after_call:
     msr TTBR0_EL1, x1
     ldr x3, [sp, #0x1d8]
     msr MAIR_EL1, x3
+    cbz x0, nothing_happened
     ldr x3, [sp, #0x1f8]
     br x3
+nothing_happened:
+    b _vt_return_orignal_sync
     .align 4
 
 
@@ -110,6 +113,7 @@ _vt_vectors_start:
 
     /* EL1 with SP_EL0 */
     b _vt_xnu_sync
+_vt_call_orignal_sync:
     b .
     .align 7
     b .
@@ -226,6 +230,29 @@ _vt_ereturn:
     msr spsel, #0
     eret
 
+.globl _vt_return_orignal_sync
+.type _vt_return_orignal_sync, @function
+_vt_return_orignal_sync:
+    ldp x0, x1, [sp], #16
+    ldp x2, x3, [sp], #16
+    ldp x4, x5, [sp], #16
+    ldp x6, x7, [sp], #16
+    ldp x8, x9, [sp], #16
+    ldp x10, x11, [sp], #16
+    ldp x12, x13, [sp], #16
+    ldp x14, x15, [sp], #16
+    ldp x16, x17, [sp], #16
+    ldp x18, x19, [sp], #16
+    ldp x20, x21, [sp], #16
+    ldp x22, x23, [sp], #16
+    ldp x24, x25, [sp], #16
+    ldp x26, x27, [sp], #16
+    ldp x28, x29, [sp], #16
+    ldr x30, [sp], #16
+
+    add sp, sp, #(SIZEOF_EXC_INFO - 32 * 8)
+
+    b _vt_call_orignal_sync
 //what a mess
 
 .globl _vt_redirect_sync

@@ -74,7 +74,7 @@ void make_page_executable(u64 addr, u64* ttbr_reg);
 
 
 u64 xnu_vbar_el1 = 0;
-void xnu_sync(u64 *regs)
+bool xnu_sync(u64 *regs)
 {
     // TBD: check exception level and stuff
     u32 insn;
@@ -120,9 +120,11 @@ void xnu_sync(u64 *regs)
             msr(TTBR1_EL1, reg_value);
             udelay(-1);
             break;
+        default:
+            return false;// not matched; call original sync handler
     }
     msr(ELR_EL1, elr);
-    // return true;//need eret
+    return true;
 }
 
 // void vt_exc_sync(u64 *regs) {
@@ -130,7 +132,7 @@ void xnu_sync(u64 *regs)
 //     mmu_pt_L0
 // }
 
-void xnu_init(u64 *regs)
+bool xnu_init(u64 *regs)
 {
     if(vbar_set){
         udelay(-1);
@@ -166,6 +168,7 @@ void xnu_init(u64 *regs)
     else printf("check msr ttbr offset\n");
     // udelay(-1);
     // return false;//normal return
+    return true;
 }
 
 void xnu_double_panic(u64* regs) {
