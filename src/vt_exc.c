@@ -13,6 +13,8 @@ extern u32 _vt_vectors_start[];
 extern u64 _vt_m1n1_mmu[];
 extern void *g_xnu_entry;
 extern u64 _vt_double_panic;
+extern void *iovbar_entry;
+extern struct vt_mmu_info _vt_mmuinfo;
 
 bool vbar_set=false;
 u32 *_vt_vectors_start_va;
@@ -66,10 +68,20 @@ void make_page_executable(u64 addr, u64* ttbr_reg);
 #define SYSREG_VBAR_EL1  sys_reg(3, 0, 12, 0, 0)
 #define SYSREG_TTBR0_EL1 sys_reg(3, 0, 2, 0, 0)
 #define SYSREG_TTBR1_EL1 sys_reg(3, 0, 2, 0, 1)
+#define SYSREG_TPIDR_EL1 sys_reg(3, 0, 13, 0, 4)
+
+#define __msr(reg, val)                                                                            \
+    ({                                                                                             \
+        u64 __val = (u64)val;                                                                      \
+        __asm__ volatile("msr\t" #reg ", %0" : : "r"(__val));                                      \
+    })
+#define _msr(reg, val) __msr(reg, val)
+#define sr_tkn(...) _concat(_sr_tkn, __VA_ARGS__, )(__VA_ARGS__)
 
 #define SYSREG_PASS(regv, sr)                                                                      \
     case SYSREG_MSR(sr):                                                                           \
-        printf("write 0x%lx to %s\n", regv, #sr);                                            \
+        printf("[=] write 0x%lx to %s\n", regv, #sr);                                            \
+        _msr(sr_tkn(sr), regv);                                                                      \
         break;
 
 
@@ -82,33 +94,55 @@ bool xnu_sync(u64 *regs)
     // u64 esr = mrs(ESR_EL1);
     u64 elr = mrs(ELR_EL1);
     insn = read32(elr);
-    printf("xnu_sync at 0x%lx = %x\n", elr, insn);
+//    printf("xnu_sync at 0x%lx = %x\n", elr, insn);
     elr += 4;
     u64 reg_value = regs[insn & INSN_MSR_Rt];
     switch (insn & SYSREG_MSK) {
-        // SYSREG_PASS(reg_value, SYSREG_VBAR_EL1);
+        // SYSREG_PASS(reg_value, SYSREG_TPIDR_EL1);
+        case SYSREG_MSR(SYSREG_TPIDR_EL1):
+            printf("[=] write 0x%lx to %s\n", reg_value, "SYSREG_TPIDR_EL1");
+            msr(TPIDR_EL1, reg_value);
+            break;
         // need do more stuff than logging when meet SYSREG_VBAR_EL1
         case SYSREG_MSR(SYSREG_VBAR_EL1):
             printf("[!] write 0x%lx to %s\n", reg_value, "SYSREG_VBAR_EL1");
-            u64 ttbr0 = mrs(TTBR0_EL1);
-            u64 tcr = mrs(TCR_EL1);
-            printf("vt_vectors_start at %p; ttbr0 is at 0x%lx\n", _vt_vectors_start, ttbr0);
-            xnu_vbar_el1 = reg_value;
-            for (int i=0; i < 16; i++ ){
-                if(_vt_vectors_start[i*0x20] == 0x14000000) {
-                    _vt_vectors_start[i*0x20] = 0x17c95600;
-                    printf("set redirector at %p\n", &_vt_vectors_start[i*0x20]);
-                }
-                if(_vt_vectors_start[i*0x20+1] == 0x14000000) {
-                    _vt_vectors_start[i*0x20+1] = 0x17c955ff;
-                    printf("set redirector at %p\n", &_vt_vectors_start[i*0x20+1]);
-                }
-                msr(VBAR_EL1, _vt_vectors_start);
-            }
-            if (_vt_m1n1_mmu[0] == 0xd503201fd503201f)
-                _vt_m1n1_mmu[0] = ttbr0;
-            if (_vt_m1n1_mmu[1] == 0xd503201fd503201f)
-                _vt_m1n1_mmu[1] = tcr; 
+            printf("just ignore it!\n");
+
+            // u64 *real_vbar_handler_l3 = vt_pt_getl3(reg_value, (u64*)mrs(TTBR1_EL1));
+            // u64 real_l3_property = *real_vbar_handler_l3 & ~GENMASK(47, 12);
+            // u64 *my_vbar_handler_l3 = vt_pt_getl3((u64)_vt_vectors_start_va, (u64*)mrs(TTBR1_EL1));
+            // write64((u64)my_vbar_handler_l3, (*my_vbar_handler_l3 & GENMASK(47, 12)) | real_l3_property);
+            // vt_pt_walk((u64)_vt_vectors_start_va, (u64*)mrs(TTBR1_EL1));
+
+            // msr(VBAR_EL1, reg_value);
+            //PLAN: patch the l3 pte of real vbar_handler; but we can't reach real vbar_handler any more!!!
+            // u64 *vbar_handler_l3 = vt_pt_getl3(reg_value, (u64*)mrs(TTBR1_EL1));
+            // u64 paddr_vbar_handler = *vbar_handler_l3 & GENMASK(47, 12);
+            // printf("paddr at 0x%lx; ours at %p\n", paddr_vbar_handler, _vt_vectors_start);
+            // write64((u64)vbar_handler_l3, (*vbar_handler_l3 & ~GENMASK(47, 12)) | (u64)_vt_vectors_start);
+            // vt_pt_walk(reg_value, (u64*)mrs(TTBR1_EL1));
+            // msr(VBAR_EL1, reg_value);
+
+
+
+            // u64 ttbr0 = mrs(TTBR0_EL1);
+            // u64 tcr = mrs(TCR_EL1);
+            // printf("vt_vectors_start at %p; ttbr0 is at 0x%lx\n", _vt_vectors_start, ttbr0);
+            // xnu_vbar_el1 = reg_value;
+            // for (int i=0; i < 16; i++ ){
+            //     if(_vt_vectors_start[i*0x20] == 0x14000000) {
+            //         _vt_vectors_start[i*0x20] = 0x17c95600;
+            //         printf("set redirector at %p\n", &_vt_vectors_start[i*0x20]);
+            //     }
+            //     if(_vt_vectors_start[i*0x20+1] == 0x14000000) {
+            //         _vt_vectors_start[i*0x20+1] = 0x17c955ff;
+            //         printf("set redirector at %p\n", &_vt_vectors_start[i*0x20+1]);
+            //     }
+            //     msr(VBAR_EL1, _vt_vectors_start);
+            // }
+
+            // udelay(-1);
+            printf("current vbar_el1 = 0x%lx\n", mrs(VBAR_EL1));
             break;
         case SYSREG_MSR(SYSREG_TTBR1_EL1):
             printf("[!] write 0x%lx to %s\n", reg_value, "SYSREG_TTBR1_EL1");
@@ -116,9 +150,19 @@ bool xnu_sync(u64 *regs)
             make_page_executable((u64)_vt_vectors_start_va, (u64*)reg_value);
             u64 _vt_double_panic_va = (u64)phy2virt(&_vt_double_panic);
             make_page_executable(_vt_double_panic_va, (u64*)reg_value);
+            // vt_pt_walk(xnu_vbar_el1, (u64*)reg_value);
+
+            _vt_mmuinfo.xnu.ttbr0_el1 = mrs(TTBR0_EL1);
+            _vt_mmuinfo.xnu.ttbr1_el1 = reg_value;
+            _vt_mmuinfo.xnu.tcr_el1   = mrs(TCR_EL1);
+            _vt_mmuinfo.xnu.mair_el1  = mrs(MAIR_EL1);
+            _vt_mmuinfo.sctlr_el1 = mrs(SCTLR_EL1);
+            // printf("writing xnu's tcr_el1=0x%lx mair_el1=0x%lx\nsctlr_el1=0x%lx ttbr0_el1=0x%lx\n",
+            //     regs[60], regs[59], mrs(SCTLR_EL1), regs[61]);
+            //set ttbr1_base to new one
             //emulate write
             msr(TTBR1_EL1, reg_value);
-            udelay(-1);
+            // udelay(-1);
             break;
         default:
             return false;// not matched; call original sync handler
@@ -158,6 +202,14 @@ bool xnu_init(u64 *regs)
         }
         msr(VBAR_EL1, _vt_vectors_start_va);
     }
+    if(read32((u64)g_xnu_entry+0x6cbb20)  == 0xd518c000) {
+        write32((u64)g_xnu_entry+0x6cbb20, 0xd518c000|0xffe00000);
+        //make it undefined
+        write32((u64)g_xnu_entry+0x4010,   0xd503201f);
+        //there's a check in kernel, bypass it
+    }
+    else printf("check msr vbar offset\n");
+    
     if(read32((u64)g_xnu_entry+0x6cbb18)  == 0xd5182020) {
         write32((u64)g_xnu_entry+0x6cbb18, 0xd5182020|0xffe00000);
         //make it undefined
@@ -166,15 +218,40 @@ bool xnu_init(u64 *regs)
         printf("set ttbr1_el1 patched\n");
     }
     else printf("check msr ttbr offset\n");
+    if(read32((u64)g_xnu_entry+0x6cbb18)  == 0xd5182020) {
+        write32((u64)g_xnu_entry+0x6cbb18, 0xd5182020|0xffe00000);
+        //make it undefined
+        write32((u64)g_xnu_entry+0x3fe8,   0xd503201f);
+        //there's a check in kernel, bypass it
+        printf("set tcr_el1 patched\n");
+    }
+    else printf("check msr tcr offset\n");
+
+    write32((u64)g_xnu_entry+0x15ae14, 0xd503201f);
+    write32((u64)g_xnu_entry-0x80, 0xd503201f);
+    printf("patched ktrr\n");
+    write64(0x202050000, (u64)&iovbar_entry | BIT(1));
+
+//     if(read32((u64)g_xnu_entry+0x4448)  == 0xd518d080) {
+//       write32((u64)g_xnu_entry+0x4448, 0xd518d080|0xffe00000);
+//         //make it undefined
+//         printf("set one of msr TPIDR_EL1 patched\n");
+//     }
+//     else printf("check msr TPIDR_EL1 offset\n");
     // udelay(-1);
-    // return false;//normal return
-    return true;
+    write32((u64)g_xnu_entry-0x6ab8, 0xf2aca332);
+    printf("patched userspace's mapping\n");
+
+    return true;//has took over err
 }
 
-void xnu_double_panic(u64* regs) {
-    UNUSED(regs);
-    printf("double panic in xnu; or m1n1 panic itself!\n");
-    udelay(-1);
+bool xnu_double_panic(u64* regs) {
+    if (regs[59] != 0) {
+        printf("double panic in xnu; or m1n1 panic itself!\n");
+        udelay(-1);
+    }
+    return xnu_sync(regs);
+    //from reset, which is also sp1
 }
 
 u64 vt_pt_walk(u64 addr, u64* ttbr_reg)
@@ -219,7 +296,7 @@ u64 vt_pt_walk(u64 addr, u64* ttbr_reg)
 
 u64* vt_pt_getl3(u64 addr, u64* ttbr_reg)
 {
-    printf("vt_pt_walk(0x%lx)\n", addr);
+    printf("vt_pt_getl3(0x%lx)\n", addr);
 
     addr = addr & MASK(39);
     u64 idx = addr >> VADDR_L1_OFFSET_BITS;

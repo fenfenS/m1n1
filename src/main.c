@@ -33,7 +33,7 @@
 extern void *g_xnu_entry;
 extern void *g_bootargs;
 extern void _vt_xnu_init;
-extern u64 _vt_phy2virtOff[];
+struct vt_mmu_info _vt_mmuinfo;
 
 struct vector_args next_stage;
 
@@ -240,9 +240,11 @@ void m1n1_main(void)
     printf("_vt_xnu_init at %p\n", &_vt_xnu_init);
     printf("ttbr0 = 0x%lx tcr = 0x%lx mair = 0x%lx\n", mrs(TTBR0_EL1), mrs(TCR_EL1), mrs(MAIR_EL1));
     //save offset and ttbr0 for switch
-    _vt_phy2virtOff[0] = cur_boot_args.virt_base-cur_boot_args.phys_base;
-    _vt_phy2virtOff[1] = mrs(TTBR0_EL1);
-    _vt_phy2virtOff[2] = mrs(MAIR_EL1);
+    _vt_mmuinfo.virt_phy_off = cur_boot_args.virt_base-cur_boot_args.phys_base;
+    _vt_mmuinfo.m1n1.ttbr0_el1 = mrs(TTBR0_EL1);
+    _vt_mmuinfo.m1n1.ttbr1_el1 = mrs(TTBR1_EL1);
+    _vt_mmuinfo.m1n1.tcr_el1   = mrs(TCR_EL1);
+    _vt_mmuinfo.m1n1.mair_el1 = mrs(MAIR_EL1);
 
     // udelay(-1);
 

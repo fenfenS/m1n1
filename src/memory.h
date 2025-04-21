@@ -83,6 +83,20 @@ static inline bool mmu_active(void)
     return mrs(SCTLR_EL1) & SCTLR_M;
 }
 
+struct mmu_context_info {
+    u64 ttbr0_el1;
+    u64 ttbr1_el1;
+    u64 tcr_el1;
+    u64 mair_el1;
+};
+
+struct vt_mmu_info{
+    u64 virt_phy_off;
+    struct mmu_context_info m1n1;
+    struct mmu_context_info xnu;
+    u64 sctlr_el1;
+};
+
 #endif
 
 #endif
