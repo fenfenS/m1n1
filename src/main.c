@@ -190,7 +190,7 @@ void m1n1_main(void)
     if (g_xnu_entry != 0) {
         printf("xnu_entry from pongoOS at %p\n", g_xnu_entry);
         printf("g_bootargs = %p; cur_boot_args=%p\n", g_bootargs, &cur_boot_args);
-        cur_boot_args.top_of_kernel_data += 0x800000;//8MB
+        cur_boot_args.top_of_kernel_data += 0x800000; // 8MB
         next_stage.entry = g_xnu_entry;
         next_stage.args[0] = (u64)&cur_boot_args;
     } else
@@ -201,11 +201,11 @@ void m1n1_main(void)
     }
 
     printf("ttbr0 = 0x%lx tcr = 0x%lx mair = 0x%lx\n", mrs(TTBR0_EL1), mrs(TCR_EL1), mrs(MAIR_EL1));
-    //save offset and ttbr0 for switch
-    _vt_mmuinfo.virt_phy_off = cur_boot_args.virt_base-cur_boot_args.phys_base;
+    // save offset and ttbr0 for switch
+    _vt_mmuinfo.virt_phy_off = cur_boot_args.virt_base - cur_boot_args.phys_base;
     _vt_mmuinfo.m1n1.ttbr0_el1 = mrs(TTBR0_EL1);
     _vt_mmuinfo.m1n1.ttbr1_el1 = mrs(TTBR1_EL1);
-    _vt_mmuinfo.m1n1.tcr_el1   = mrs(TCR_EL1);
+    _vt_mmuinfo.m1n1.tcr_el1 = mrs(TCR_EL1);
     _vt_mmuinfo.m1n1.mair_el1 = mrs(MAIR_EL1);
     _vt_mmuinfo.sctlr_el1 = mrs(SCTLR_EL1);
 
@@ -224,32 +224,6 @@ void m1n1_main(void)
 
     printf("Vectoring to next stage...\n");
     
-    //patch atv4k kernel
-    // if(read32((u64)g_xnu_entry+0x6cbb20)  == 0xd518c000) {
-    //     write32((u64)g_xnu_entry+0x6cbb20, 0xd518c000|0xffe00000);
-    //     //make it undefined
-    //     write32((u64)g_xnu_entry+0x4010,   0xd503201f);
-    //     //there's a check in kernel, bypass it
-    // }
-    // else printf("check msr vbar offset\n");
-    // if(read32((u64)g_xnu_entry+0x6cbb30)  == 0xd5181000) {
-    //     write32((u64)g_xnu_entry+0x6cbb30, 0xd5181000|0xffe00000);
-    //     //make it undefined
-    //     write32((u64)g_xnu_entry+0x4060,   0xd503201f);
-    //     //there's a check in kernel, bypass it
-    // }
-    // else printf("check msr ttbr offset\n");
-
-    // if(read32((u64)g_xnu_entry+0x3f9c) == 0xd65f03c0) {
-    //     // patch ret after mmu enabled; branch to _vt_xnu_init
-    //     u32 offsetOfRet=&_vt_xnu_init - (g_xnu_entry + 0x3f9c);
-    //     u32 b_insn = (0x14367edf & 0xfc000000) | offsetOfRet>>2;
-    //     write32((u64)g_xnu_entry+0x3f9c, b_insn);
-    //     printf("write 0x%x to %p\n", b_insn, g_xnu_entry+0x3f9c );
-    // }
-    // printf("_vt_xnu_init at %p\n", &_vt_xnu_init);
-
-    // udelay(-1);
     xnu_init();
 
     next_stage.entry(next_stage.args[0], next_stage.args[1], next_stage.args[2], next_stage.args[3],
@@ -264,41 +238,39 @@ extern void *iovbar_entry;
 void xnu_init(void)
 {
     printf("xnu_init before booting!\n");
-    // printf("_vt_vectors_start at %p, virt_base=0x%lx\n", _vt_vectors_start, cur_boot_args.virt_base);
-    // printf("offset=0x%lx\n", (u64)_vt_vectors_start - cur_boot_args.phys_base);
     printf("_vt_vectors_start at %p\n", _vt_vectors_start);
-    //redirect vbar
-    for (int i=0; i < 16; i++ ){
-        if(_vt_vectors_start[i*0x20] == 0x14000000) {
-            _vt_vectors_start[i*0x20] = 0x17c93000;
-            printf("set redirector at %p\n", &_vt_vectors_start[i*0x20]);
+    // redirect vbar
+    for (int i = 0; i < 16; i++) {
+        if (_vt_vectors_start[i * 0x20] == 0x14000000) {
+            _vt_vectors_start[i * 0x20] = 0x17c93000;
+            printf("set redirector at %p\n", &_vt_vectors_start[i * 0x20]);
         }
-        if(_vt_vectors_start[i*0x20+1] == 0x14000000) {
-            _vt_vectors_start[i*0x20+1] = 0x17c92fff;
-            printf("set redirector at %p\n", &_vt_vectors_start[i*0x20+1]);
+        if (_vt_vectors_start[i * 0x20 + 1] == 0x14000000) {
+            _vt_vectors_start[i * 0x20 + 1] = 0x17c92fff;
+            printf("set redirector at %p\n", &_vt_vectors_start[i * 0x20 + 1]);
         }
-        if(_vt_vectors_start[i*0x20+2] == 0x14000000) {
-            _vt_vectors_start[i*0x20+2] = 0x17c92ffe;
-            printf("set redirector at %p\n", &_vt_vectors_start[i*0x20+2]);
+        if (_vt_vectors_start[i * 0x20 + 2] == 0x14000000) {
+            _vt_vectors_start[i * 0x20 + 2] = 0x17c92ffe;
+            printf("set redirector at %p\n", &_vt_vectors_start[i * 0x20 + 2]);
         }
         msr(VBAR_EL1, _vt_vectors_start);
     }
-    if(read32((u64)g_xnu_entry+0x6cbb20)  == 0xd518c000) {
-        write32((u64)g_xnu_entry+0x6cbb20, 0xd518c000|0xffe00000);
-        //make it undefined
-        write32((u64)g_xnu_entry+0x4010,   0xd503201f);
-        //there's a check in kernel, bypass it
-    }
-    else printf("check msr vbar offset\n");
-    
-    if(read32((u64)g_xnu_entry+0x6cbb18)  == 0xd5182020) {
-        write32((u64)g_xnu_entry+0x6cbb18, 0xd5182020|0xffe00000);
-        //make it undefined
-        write32((u64)g_xnu_entry+0x3fe8,   0xd503201f);
-        //there's a check in kernel, bypass it
+    if (read32((u64)g_xnu_entry + 0x6cbb20) == 0xd518c000) {
+        write32((u64)g_xnu_entry + 0x6cbb20, 0xd518c000 | 0xffe00000);
+        // make it undefined
+        write32((u64)g_xnu_entry + 0x4010, 0xd503201f);
+        // there's a check in kernel, bypass it
+    } else
+        printf("check msr vbar offset\n");
+
+    if (read32((u64)g_xnu_entry + 0x6cbb18) == 0xd5182020) {
+        write32((u64)g_xnu_entry + 0x6cbb18, 0xd5182020 | 0xffe00000);
+        // make it undefined
+        write32((u64)g_xnu_entry + 0x3fe8, 0xd503201f);
+        // there's a check in kernel, bypass it
         printf("set ttbr1_el1 patched\n");
-    }
-    else printf("check msr ttbr offset\n");
+    } else
+        printf("check msr ttbr offset\n");
 
     // if(read32((u64)g_xnu_entry+0x6cbb28)  == 0xd5182040) {
     //     write32((u64)g_xnu_entry+0x6cbb28, 0xd5182040|0xffe00000);
@@ -309,8 +281,8 @@ void xnu_init(void)
     // }
     // else printf("check msr tcr offset\n");
 
-    write32((u64)g_xnu_entry+0x15ae14, 0xd503201f);
-    write32((u64)g_xnu_entry-0x80, 0xd503201f);
+    write32((u64)g_xnu_entry + 0x15ae14, 0xd503201f);
+    write32((u64)g_xnu_entry - 0x80, 0xd503201f);
     printf("patched ktrr\n");
     write64(0x202050000, (u64)&iovbar_entry | BIT(1));
 
@@ -322,7 +294,7 @@ void xnu_init(void)
     // else printf("check msr TPIDR_EL1 offset\n");
 
     // udelay(-1);
-    write32((u64)g_xnu_entry-0x6ab8, 0xf2aca332);
+    write32((u64)g_xnu_entry - 0x6ab8, 0xf2aca332);
     printf("patched userspace's mapping\n");
     msr(VBAR_EL1, _vt_vectors_start);
     printf("------------------------------Patched XNU Booting------------------------------\n");

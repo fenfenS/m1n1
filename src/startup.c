@@ -206,7 +206,7 @@ void _start_c(void *boot_args, void *base, void *pongo_xnu_entry)
     get_device_info();
 
     printf("CPU init (MIDR: 0x%lx smp_id:0x%x)...\n", mrs(MIDR_EL1), smp_id());
-    const char *type = "vbar-test";// init_cpu()";
+    const char *type = "vbar-test"; // init_cpu()";
     printf("  CPU: %s\n\n", type);
 
     printf("boot_args at %p\n", boot_args);

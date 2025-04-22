@@ -494,7 +494,7 @@ static void mmu_add_default_mappings(void)
     mmu_remap_ranges();
 }
 
-void mmu_configure(void)
+static void mmu_configure(void)
 {
     msr(MAIR_EL1, (MAIR_ATTR_NORMAL_DEFAULT << MAIR_SHIFT_NORMAL) |
                       (MAIR_ATTR_DEVICE_nGnRnE << MAIR_SHIFT_DEVICE_nGnRnE) |

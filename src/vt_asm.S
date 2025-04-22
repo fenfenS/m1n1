@@ -2,8 +2,6 @@
 
 #include "exception.h"
 
-//#define MAGIC_IN_EARLY 0x3d547f7687a8fc26
-
 .extern xnu_vbar_el1
 
 .global _vt_m1n1_mmu
@@ -239,20 +237,20 @@ _vt_vectors_el1_sp1_sync:
     .align 7
 
 .macro CHECK_0 reg, bit, label
-    tbnz \reg, \bit, \label   // 如果位为1，跳转(期望0)
+    tbnz \reg, \bit, \label
 .endm
 
 .macro CHECK_1 reg, bit, label
-    tbz \reg, \bit, \label    // 如果位为0，跳转(期望1)
+    tbz \reg, \bit, \label
 .endm
 
 check_x2:
     // b .
-    // 目标值: 0xd65f03c0d5182020 -> ttbr1
+    //        0xd65f03c0d5182020 -> ttbr1
     //        0xd65f03c0d518c000 -> vbar_el1
     // have only checked x2 for this two to detect if it's early stage
 
-    // 字节1: 0x20 (0010 0000)
+    // byte1: 0x20 (0010 0000)
     CHECK_0 x2, 0, not_equal
     CHECK_0 x2, 1, not_equal
     CHECK_0 x2, 2, not_equal
@@ -262,7 +260,7 @@ check_x2:
     CHECK_0 x2, 6, not_equal
     CHECK_0 x2, 7, not_equal
 
-    // 字节2: 0x20 (0010 0000)
+    // byte2: 0x20 (0010 0000)
     CHECK_0 x2, 8, not_equal
     CHECK_0 x2, 9, not_equal
     CHECK_0 x2, 10, not_equal
@@ -272,7 +270,7 @@ check_x2:
     //CHECK_0 x2, 14, not_equal
     //CHECK_0 x2, 15, not_equal
 
-    // 字节3: 0x18 (0001 1000)
+    // byte3: 0x18 (0001 1000)
     CHECK_0 x2, 16, not_equal
     CHECK_0 x2, 17, not_equal
     CHECK_0 x2, 18, not_equal
@@ -282,7 +280,7 @@ check_x2:
     CHECK_0 x2, 22, not_equal
     CHECK_0 x2, 23, not_equal
 
-    // 字节4: 0xd5 (1101 0101)
+    // byte4: 0xd5 (1101 0101)
     CHECK_1 x2, 24, not_equal
     CHECK_0 x2, 25, not_equal
     CHECK_1 x2, 26, not_equal
@@ -292,7 +290,7 @@ check_x2:
     CHECK_1 x2, 30, not_equal
     CHECK_1 x2, 31, not_equal
 
-    // 字节5: 0xc0 (1100 0000)
+    // byte5: 0xc0 (1100 0000)
     CHECK_0 x2, 32, not_equal
     CHECK_0 x2, 33, not_equal
     CHECK_0 x2, 34, not_equal
@@ -302,7 +300,7 @@ check_x2:
     CHECK_1 x2, 38, not_equal
     CHECK_1 x2, 39, not_equal
 
-    // 字节6: 0x03 (0000 0011)
+    // byte6: 0x03 (0000 0011)
     CHECK_1 x2, 40, not_equal
     CHECK_1 x2, 41, not_equal
     CHECK_0 x2, 42, not_equal
@@ -312,7 +310,7 @@ check_x2:
     CHECK_0 x2, 46, not_equal
     CHECK_0 x2, 47, not_equal
 
-    // 字节7: 0x5f (0101 1111)
+    // byte7: 0x5f (0101 1111)
     CHECK_1 x2, 48, not_equal
     CHECK_1 x2, 49, not_equal
     CHECK_1 x2, 50, not_equal
@@ -322,7 +320,7 @@ check_x2:
     CHECK_1 x2, 54, not_equal
     CHECK_0 x2, 55, not_equal
 
-    // 字节8: 0xd6 (1101 0110)
+    // byte8: 0xd6 (1101 0110)
     CHECK_0 x2, 56, not_equal
     CHECK_1 x2, 57, not_equal
     CHECK_1 x2, 58, not_equal
@@ -332,9 +330,7 @@ check_x2:
     CHECK_1 x2, 62, not_equal
     CHECK_1 x2, 63, not_equal
 
-    // 所有检查通过
     equal:
-    // 执行相等情况的代码
     //corrupt x2/x3 to have a good stack
     mov x3, sp
     adr x2, _vt_m1n1_call
@@ -343,7 +339,6 @@ check_x2:
     // b .
     ldr x2, =el0_stack_base
     mov sp, x2
-    //ldr x2, =MAGIC_IN_EARLY
     b _vt_m1n1_call_early
 
     not_equal:
