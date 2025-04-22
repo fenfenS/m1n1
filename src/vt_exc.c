@@ -20,6 +20,10 @@ u64 vt_pt_walk(u64 addr, u64* ttbr_reg);
 u64* vt_pt_getl3(u64 addr, u64* ttbr_reg);
 void make_page_executable(u64 addr, u64* ttbr_reg);
 
+#define dprintf(...)                                                                               \
+    do {                                                                                           \
+    } while (0)
+
 #define phy2virt(addr) ((u64)addr - cur_boot_args.phys_base + cur_boot_args.virt_base);
 
 #define VADDR_L4_OFFSET_BITS 2
@@ -67,6 +71,7 @@ void make_page_executable(u64 addr, u64* ttbr_reg);
 #define SYSREG_TTBR0_EL1 sys_reg(3, 0, 2, 0, 0)
 #define SYSREG_TTBR1_EL1 sys_reg(3, 0, 2, 0, 1)
 #define SYSREG_TPIDR_EL1 sys_reg(3, 0, 13, 0, 4)
+#define SYSREG_TCR_EL1       sys_reg(3, 0, 2, 0, 2)
 
 #define __msr(reg, val)                                                                            \
     ({                                                                                             \
@@ -92,10 +97,11 @@ bool xnu_sync_msr(u64 *regs)
     // u64 esr = mrs(ESR_EL1);
     u64 elr = mrs(ELR_EL1);
     insn = read32(elr);
-//    printf("xnu_sync at 0x%lx = %x\n", elr, insn);
+//    dprintf("xnu_sync at 0x%lx = %x\n", elr, insn);
     elr += 4;
     u64 reg_value = regs[insn & INSN_MSR_Rt];
     switch (insn & SYSREG_MSK) {
+        SYSREG_PASS(reg_value, SYSREG_TCR_EL1);
         // SYSREG_PASS(reg_value, SYSREG_TPIDR_EL1);
         case SYSREG_MSR(SYSREG_TPIDR_EL1):
             printf("[=] write 0x%lx to %s\n", reg_value, "SYSREG_TPIDR_EL1");
@@ -103,14 +109,14 @@ bool xnu_sync_msr(u64 *regs)
             break;
         // need do more stuff than logging when meet SYSREG_VBAR_EL1
         case SYSREG_MSR(SYSREG_VBAR_EL1):
-            printf("[!] write 0x%lx to %s\n", reg_value, "SYSREG_VBAR_EL1");
+            dprintf("[!] write 0x%lx to %s\n", reg_value, "SYSREG_VBAR_EL1");
             if((reg_value & 0xff00000000000000) == 0xff00000000000000) {
                 //set vbar_el1 to virt addr of our handler
                 _vt_vectors_start_va = (u32*)phy2virt(_vt_vectors_start);
                 msr(VBAR_EL1, _vt_vectors_start_va);
             }
             else
-                printf("just ignore it!\n");
+                dprintf("just ignore it!\n");
 
             // u64 *real_vbar_handler_l3 = vt_pt_getl3(reg_value, (u64*)mrs(TTBR1_EL1));
             // u64 real_l3_property = *real_vbar_handler_l3 & ~GENMASK(47, 12);
@@ -122,7 +128,7 @@ bool xnu_sync_msr(u64 *regs)
             //PLAN: patch the l3 pte of real vbar_handler; but we can't reach real vbar_handler any more!!!
             // u64 *vbar_handler_l3 = vt_pt_getl3(reg_value, (u64*)mrs(TTBR1_EL1));
             // u64 paddr_vbar_handler = *vbar_handler_l3 & GENMASK(47, 12);
-            // printf("paddr at 0x%lx; ours at %p\n", paddr_vbar_handler, _vt_vectors_start);
+            // dprintf("paddr at 0x%lx; ours at %p\n", paddr_vbar_handler, _vt_vectors_start);
             // write64((u64)vbar_handler_l3, (*vbar_handler_l3 & ~GENMASK(47, 12)) | (u64)_vt_vectors_start);
             // vt_pt_walk(reg_value, (u64*)mrs(TTBR1_EL1));
             // msr(VBAR_EL1, reg_value);
@@ -131,26 +137,26 @@ bool xnu_sync_msr(u64 *regs)
 
             // u64 ttbr0 = mrs(TTBR0_EL1);
             // u64 tcr = mrs(TCR_EL1);
-            // printf("vt_vectors_start at %p; ttbr0 is at 0x%lx\n", _vt_vectors_start, ttbr0);
+            // dprintf("vt_vectors_start at %p; ttbr0 is at 0x%lx\n", _vt_vectors_start, ttbr0);
             // xnu_vbar_el1 = reg_value;
             // for (int i=0; i < 16; i++ ){
             //     if(_vt_vectors_start[i*0x20] == 0x14000000) {
             //         _vt_vectors_start[i*0x20] = 0x17c95600;
-            //         printf("set redirector at %p\n", &_vt_vectors_start[i*0x20]);
+            //         dprintf("set redirector at %p\n", &_vt_vectors_start[i*0x20]);
             //     }
             //     if(_vt_vectors_start[i*0x20+1] == 0x14000000) {
             //         _vt_vectors_start[i*0x20+1] = 0x17c955ff;
-            //         printf("set redirector at %p\n", &_vt_vectors_start[i*0x20+1]);
+            //         dprintf("set redirector at %p\n", &_vt_vectors_start[i*0x20+1]);
             //     }
             //     msr(VBAR_EL1, _vt_vectors_start);
             // }
 
             // udelay(-1);
-            printf("current vbar_el1 = 0x%lx\n", mrs(VBAR_EL1));
+            dprintf("current vbar_el1 = 0x%lx\n", mrs(VBAR_EL1));
             break;
         case SYSREG_MSR(SYSREG_TTBR1_EL1):
-            printf("[!] write 0x%lx to %s\n", reg_value, "SYSREG_TTBR1_EL1");
-            // printf("do mmu walk to make sure our vbar handler is executable!\n");
+            dprintf("[!] write 0x%lx to %s\n", reg_value, "SYSREG_TTBR1_EL1");
+            // dprintf("do mmu walk to make sure our vbar handler is executable!\n");
             // make_page_executable((u64)_vt_vectors_start_va, (u64*)reg_value);
             // u64 _vt_double_panic_va = (u64)phy2virt(&_vt_double_panic);
             // make_page_executable(_vt_double_panic_va, (u64*)reg_value);
@@ -161,7 +167,7 @@ bool xnu_sync_msr(u64 *regs)
             _vt_mmuinfo.xnu.tcr_el1   = mrs(TCR_EL1);
             _vt_mmuinfo.xnu.mair_el1  = mrs(MAIR_EL1);
             // _vt_mmuinfo.sctlr_el1 = mrs(SCTLR_EL1);
-            // printf("writing xnu's tcr_el1=0x%lx mair_el1=0x%lx\nsctlr_el1=0x%lx ttbr0_el1=0x%lx\n",
+            // dprintf("writing xnu's tcr_el1=0x%lx mair_el1=0x%lx\nsctlr_el1=0x%lx ttbr0_el1=0x%lx\n",
             //     regs[60], regs[59], mrs(SCTLR_EL1), regs[61]);
             //set ttbr1_base to new one
             //emulate write
@@ -190,14 +196,14 @@ bool xnu_sync_msr(u64 *regs)
 
 bool xnu_double_panic(u64* regs) {
     UNUSED(regs);
-    printf("double panic in xnu; or m1n1 panic itself!\n");
+    dprintf("double panic in xnu; or m1n1 panic itself!\n");
     udelay(-1);
     return false;
 }
 
 u64 vt_pt_walk(u64 addr, u64* ttbr_reg)
 {
-    printf("vt_pt_walk(0x%lx)\n", addr);
+    dprintf("vt_pt_walk(0x%lx)\n", addr);
 
     addr = addr & MASK(39);
     u64 idx = addr >> VADDR_L1_OFFSET_BITS;
@@ -205,39 +211,39 @@ u64 vt_pt_walk(u64 addr, u64* ttbr_reg)
 
     u64 l1d = ttbr_reg[idx];
 
-    printf("  l1d = 0x%lx, at %p\n", l1d, &ttbr_reg[idx]);
+    dprintf("  l1d = 0x%lx, at %p\n", l1d, &ttbr_reg[idx]);
 
     if (!L1_IS_TABLE(l1d)) {
-        printf("  result: 0x%lx\n", l1d);
+        dprintf("  result: 0x%lx\n", l1d);
         return l1d;
     }
     l2 = (u64 *)(l1d & PTE_TARGET_MASK);
 
     idx = (addr >> VADDR_L2_OFFSET_BITS) & MASK(VADDR_L2_INDEX_BITS);
     u64 l2d = l2[idx];
-    printf("  l2d = 0x%lx, at %p\n", l2d, &l2[idx]);
+    dprintf("  l2d = 0x%lx, at %p\n", l2d, &l2[idx]);
 
     if (!L2_IS_TABLE(l2d)) {
 
         l2d &= ~PTE_LOWER_ATTRIBUTES;
         l2d |= addr & (VADDR_L2_ALIGN_MASK | VADDR_L3_ALIGN_MASK);
 
-        printf("  result: 0x%lx\n", l2d);
+        dprintf("  result: 0x%lx\n", l2d);
         return l2d;
     }
 
     idx = (addr >> VADDR_L3_OFFSET_BITS) & MASK(VADDR_L3_INDEX_BITS);
     u64 l3d = ((u64 *)(l2d & PTE_TARGET_MASK))[idx];
-    printf("  l3d = 0x%lx\n", l3d);
+    dprintf("  l3d = 0x%lx\n", l3d);
     l3d &= ~PTE_LOWER_ATTRIBUTES;
     l3d |= addr & VADDR_L3_ALIGN_MASK;
-    printf("  result: 0x%lx\n", l3d);
+    dprintf("  result: 0x%lx\n", l3d);
     return l3d;
 }
 
 u64* vt_pt_getl3(u64 addr, u64* ttbr_reg)
 {
-    printf("vt_pt_getl3(0x%lx)\n", addr);
+    dprintf("vt_pt_getl3(0x%lx)\n", addr);
 
     addr = addr & MASK(39);
     u64 idx = addr >> VADDR_L1_OFFSET_BITS;
@@ -245,40 +251,40 @@ u64* vt_pt_getl3(u64 addr, u64* ttbr_reg)
 
     u64 l1d = ttbr_reg[idx];
 
-    printf("  l1d = 0x%lx, at %p, idx=0x%lx\n", l1d, &ttbr_reg[idx], idx);
+    dprintf("  l1d = 0x%lx, at %p, idx=0x%lx\n", l1d, &ttbr_reg[idx], idx);
 
     if (!L1_IS_TABLE(l1d)) {
-        printf("  result: 0x%lx\n", l1d);
+        dprintf("  result: 0x%lx\n", l1d);
         return &ttbr_reg[idx];
     }
     l2 = (u64 *)(l1d & PTE_TARGET_MASK);
 
     idx = (addr >> VADDR_L2_OFFSET_BITS) & MASK(VADDR_L2_INDEX_BITS);
     u64 l2d = l2[idx];
-    printf("  l2d = 0x%lx, at %p, idx=0x%lx; l2=%p\n", l2d, &l2[idx], idx, l2);
+    dprintf("  l2d = 0x%lx, at %p, idx=0x%lx; l2=%p\n", l2d, &l2[idx], idx, l2);
 
     if (!L2_IS_TABLE(l2d)) {
 
         l2d &= ~PTE_LOWER_ATTRIBUTES;
         l2d |= addr & (VADDR_L2_ALIGN_MASK | VADDR_L3_ALIGN_MASK);
 
-        printf("  result: 0x%lx\n", l2d);
+        dprintf("  result: 0x%lx\n", l2d);
         return &l2[idx];
     }
 
     idx = (addr >> VADDR_L3_OFFSET_BITS) & MASK(VADDR_L3_INDEX_BITS);
     u64 l3d = ((u64 *)(l2d & PTE_TARGET_MASK))[idx];
-    printf("  l3d = 0x%lx\n", l3d);
+    dprintf("  l3d = 0x%lx\n", l3d);
     return &((u64 *)(l2d & PTE_TARGET_MASK))[idx];
 }
 
 void make_page_executable(u64 addr, u64* ttbr_reg){
     u64* l3_addr = vt_pt_getl3((u64)addr, (u64*)ttbr_reg);
     u64 l3_entry = *l3_addr;
-    printf("[=] l3 entry = 0x%lx at %p\n", l3_entry, l3_addr);
+    dprintf("[=] l3 entry = 0x%lx at %p\n", l3_entry, l3_addr);
     write64((u64)l3_addr, l3_entry & ~( BIT(53) | BIT(54) ));
     //remove xn/pxn bits
-    printf("[+] l3 entry = 0x%lx at %p\n", *l3_addr, l3_addr);
+    dprintf("[+] l3 entry = 0x%lx at %p\n", *l3_addr, l3_addr);
 }
 
 bool xnu_dispatch(u64 *regs) {

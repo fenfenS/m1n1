@@ -250,7 +250,7 @@ check_x2:
     // b .
     // 目标值: 0xd65f03c0d5182020 -> ttbr1
     //        0xd65f03c0d518c000 -> vbar_el1
-    // 二进制: 1101 0110 0101 1111 0000 0011 1100 0000 1101 0101 0001 1000 0010 0000 0010 0000
+    // have only checked x2 for this two to detect if it's early stage
 
     // 字节1: 0x20 (0010 0000)
     CHECK_0 x2, 0, not_equal

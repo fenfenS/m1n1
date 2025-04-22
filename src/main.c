@@ -299,10 +299,11 @@ void xnu_init(void)
         printf("set ttbr1_el1 patched\n");
     }
     else printf("check msr ttbr offset\n");
-    // if(read32((u64)g_xnu_entry+0x6cbb18)  == 0xd5182020) {
-    //     write32((u64)g_xnu_entry+0x6cbb18, 0xd5182020|0xffe00000);
+
+    // if(read32((u64)g_xnu_entry+0x6cbb28)  == 0xd5182040) {
+    //     write32((u64)g_xnu_entry+0x6cbb28, 0xd5182040|0xffe00000);
     //     //make it undefined
-    //     write32((u64)g_xnu_entry+0x3fe8,   0xd503201f);
+    //     write32((u64)g_xnu_entry+0x4038, 0xd503201f);
     //     //there's a check in kernel, bypass it
     //     printf("set tcr_el1 patched\n");
     // }
@@ -313,12 +314,13 @@ void xnu_init(void)
     printf("patched ktrr\n");
     write64(0x202050000, (u64)&iovbar_entry | BIT(1));
 
-//     if(read32((u64)g_xnu_entry+0x4448)  == 0xd518d080) {
-//       write32((u64)g_xnu_entry+0x4448, 0xd518d080|0xffe00000);
-//         //make it undefined
-//         printf("set one of msr TPIDR_EL1 patched\n");
-//     }
-//     else printf("check msr TPIDR_EL1 offset\n");
+    // if(read32((u64)g_xnu_entry+0x4448)  == 0xd518d080) {
+    //   write32((u64)g_xnu_entry+0x4448, 0xd518d080|0xffe00000);
+    //     //make it undefined
+    //     printf("set one of msr TPIDR_EL1 patched\n");
+    // }
+    // else printf("check msr TPIDR_EL1 offset\n");
+
     // udelay(-1);
     write32((u64)g_xnu_entry-0x6ab8, 0xf2aca332);
     printf("patched userspace's mapping\n");
