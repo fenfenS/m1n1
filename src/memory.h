@@ -90,7 +90,7 @@ struct mmu_context_info {
     u64 mair_el1;
 };
 
-struct vt_mmu_info{
+struct vt_mmu_info {
     u64 virt_phy_off;
     struct mmu_context_info m1n1;
     struct mmu_context_info xnu;

@@ -12,11 +12,9 @@
 extern u32 _vt_vectors_start[];
 extern u64 _vt_m1n1_mmu[];
 extern void *g_xnu_entry;
-extern u64 _vt_double_panic;
-extern void *iovbar_entry;
+extern u64 _vt_m1n1_call;
 extern struct vt_mmu_info _vt_mmuinfo;
 
-bool vbar_set=false;
 u32 *_vt_vectors_start_va;
 u64 vt_pt_walk(u64 addr, u64* ttbr_reg);
 u64* vt_pt_getl3(u64 addr, u64* ttbr_reg);
@@ -86,7 +84,7 @@ void make_page_executable(u64 addr, u64* ttbr_reg);
 
 
 u64 xnu_vbar_el1 = 0;
-bool xnu_sync(u64 *regs)
+bool xnu_sync_msr(u64 *regs)
 {
     // TBD: check exception level and stuff
     u32 insn;
@@ -106,7 +104,13 @@ bool xnu_sync(u64 *regs)
         // need do more stuff than logging when meet SYSREG_VBAR_EL1
         case SYSREG_MSR(SYSREG_VBAR_EL1):
             printf("[!] write 0x%lx to %s\n", reg_value, "SYSREG_VBAR_EL1");
-            printf("just ignore it!\n");
+            if((reg_value & 0xff00000000000000) == 0xff00000000000000) {
+                //set vbar_el1 to virt addr of our handler
+                _vt_vectors_start_va = (u32*)phy2virt(_vt_vectors_start);
+                msr(VBAR_EL1, _vt_vectors_start_va);
+            }
+            else
+                printf("just ignore it!\n");
 
             // u64 *real_vbar_handler_l3 = vt_pt_getl3(reg_value, (u64*)mrs(TTBR1_EL1));
             // u64 real_l3_property = *real_vbar_handler_l3 & ~GENMASK(47, 12);
@@ -146,23 +150,31 @@ bool xnu_sync(u64 *regs)
             break;
         case SYSREG_MSR(SYSREG_TTBR1_EL1):
             printf("[!] write 0x%lx to %s\n", reg_value, "SYSREG_TTBR1_EL1");
-            printf("do mmu walk to make sure our vbar handler is executable!\n");
-            make_page_executable((u64)_vt_vectors_start_va, (u64*)reg_value);
-            u64 _vt_double_panic_va = (u64)phy2virt(&_vt_double_panic);
-            make_page_executable(_vt_double_panic_va, (u64*)reg_value);
+            // printf("do mmu walk to make sure our vbar handler is executable!\n");
+            // make_page_executable((u64)_vt_vectors_start_va, (u64*)reg_value);
+            // u64 _vt_double_panic_va = (u64)phy2virt(&_vt_double_panic);
+            // make_page_executable(_vt_double_panic_va, (u64*)reg_value);
             // vt_pt_walk(xnu_vbar_el1, (u64*)reg_value);
 
             _vt_mmuinfo.xnu.ttbr0_el1 = mrs(TTBR0_EL1);
             _vt_mmuinfo.xnu.ttbr1_el1 = reg_value;
             _vt_mmuinfo.xnu.tcr_el1   = mrs(TCR_EL1);
             _vt_mmuinfo.xnu.mair_el1  = mrs(MAIR_EL1);
-            _vt_mmuinfo.sctlr_el1 = mrs(SCTLR_EL1);
+            // _vt_mmuinfo.sctlr_el1 = mrs(SCTLR_EL1);
             // printf("writing xnu's tcr_el1=0x%lx mair_el1=0x%lx\nsctlr_el1=0x%lx ttbr0_el1=0x%lx\n",
             //     regs[60], regs[59], mrs(SCTLR_EL1), regs[61]);
             //set ttbr1_base to new one
             //emulate write
-            msr(TTBR1_EL1, reg_value);
-            // udelay(-1);
+            if( !regs[63] )// early
+                regs[62] = reg_value;
+            else {// later
+                msr(TTBR1_EL1, reg_value);
+                //fix privilege here!
+                make_page_executable((u64)_vt_vectors_start_va, (u64*)reg_value);
+                u64 _vt_m1n1_call_va = (u64)phy2virt(&_vt_m1n1_call);
+                make_page_executable(_vt_m1n1_call_va, (u64*)reg_value);
+            }
+            //udelay(-1);
             break;
         default:
             return false;// not matched; call original sync handler
@@ -176,82 +188,11 @@ bool xnu_sync(u64 *regs)
 //     mmu_pt_L0
 // }
 
-bool xnu_init(u64 *regs)
-{
-    if(vbar_set){
-        udelay(-1);
-    }
-    vbar_set = true;
-    UNUSED(regs);
-    xnu_vbar_el1 = mrs(SYSREG_VBAR_EL1);
-
-    printf("m1n1 after xnu_init!\n");
-    // printf("_vt_vectors_start at %p, virt_base=0x%lx\n", _vt_vectors_start, cur_boot_args.virt_base);
-    // printf("offset=0x%lx\n", (u64)_vt_vectors_start - cur_boot_args.phys_base);
-    _vt_vectors_start_va = (u32*)phy2virt(_vt_vectors_start);
-    printf("_vt_vectors_start_va at %p, current vbar=0x%lx\n", _vt_vectors_start_va, xnu_vbar_el1);
-    //redirect vbar
-    for (int i=0; i < 16; i++ ){
-        if(_vt_vectors_start_va[i*0x20] == 0x14000000) {
-            _vt_vectors_start_va[i*0x20] = 0x17c93000;
-            printf("set redirector at %p\n", &_vt_vectors_start_va[i*0x20]);
-        }
-        if(_vt_vectors_start_va[i*0x20+1] == 0x14000000) {
-            _vt_vectors_start_va[i*0x20+1] = 0x17c92fff;
-            printf("set redirector at %p\n", &_vt_vectors_start_va[i*0x20+1]);
-        }
-        msr(VBAR_EL1, _vt_vectors_start_va);
-    }
-    if(read32((u64)g_xnu_entry+0x6cbb20)  == 0xd518c000) {
-        write32((u64)g_xnu_entry+0x6cbb20, 0xd518c000|0xffe00000);
-        //make it undefined
-        write32((u64)g_xnu_entry+0x4010,   0xd503201f);
-        //there's a check in kernel, bypass it
-    }
-    else printf("check msr vbar offset\n");
-    
-    if(read32((u64)g_xnu_entry+0x6cbb18)  == 0xd5182020) {
-        write32((u64)g_xnu_entry+0x6cbb18, 0xd5182020|0xffe00000);
-        //make it undefined
-        write32((u64)g_xnu_entry+0x3fe8,   0xd503201f);
-        //there's a check in kernel, bypass it
-        printf("set ttbr1_el1 patched\n");
-    }
-    else printf("check msr ttbr offset\n");
-    if(read32((u64)g_xnu_entry+0x6cbb18)  == 0xd5182020) {
-        write32((u64)g_xnu_entry+0x6cbb18, 0xd5182020|0xffe00000);
-        //make it undefined
-        write32((u64)g_xnu_entry+0x3fe8,   0xd503201f);
-        //there's a check in kernel, bypass it
-        printf("set tcr_el1 patched\n");
-    }
-    else printf("check msr tcr offset\n");
-
-    write32((u64)g_xnu_entry+0x15ae14, 0xd503201f);
-    write32((u64)g_xnu_entry-0x80, 0xd503201f);
-    printf("patched ktrr\n");
-    write64(0x202050000, (u64)&iovbar_entry | BIT(1));
-
-//     if(read32((u64)g_xnu_entry+0x4448)  == 0xd518d080) {
-//       write32((u64)g_xnu_entry+0x4448, 0xd518d080|0xffe00000);
-//         //make it undefined
-//         printf("set one of msr TPIDR_EL1 patched\n");
-//     }
-//     else printf("check msr TPIDR_EL1 offset\n");
-    // udelay(-1);
-    write32((u64)g_xnu_entry-0x6ab8, 0xf2aca332);
-    printf("patched userspace's mapping\n");
-
-    return true;//has took over err
-}
-
 bool xnu_double_panic(u64* regs) {
-    if (regs[59] != 0) {
-        printf("double panic in xnu; or m1n1 panic itself!\n");
-        udelay(-1);
-    }
-    return xnu_sync(regs);
-    //from reset, which is also sp1
+    UNUSED(regs);
+    printf("double panic in xnu; or m1n1 panic itself!\n");
+    udelay(-1);
+    return false;
 }
 
 u64 vt_pt_walk(u64 addr, u64* ttbr_reg)
@@ -338,4 +279,13 @@ void make_page_executable(u64 addr, u64* ttbr_reg){
     write64((u64)l3_addr, l3_entry & ~( BIT(53) | BIT(54) ));
     //remove xn/pxn bits
     printf("[+] l3 entry = 0x%lx at %p\n", *l3_addr, l3_addr);
+}
+
+bool xnu_dispatch(u64 *regs) {
+    u32 insn = read32(mrs(ELR_EL1));
+    if((insn & 0xffe00000) == 0xffe00000)
+        return xnu_sync_msr(regs);
+    if(( 1 & mrs(SPSR_EL1)) == 1)
+        return xnu_double_panic(regs);
+    return false;
 }
