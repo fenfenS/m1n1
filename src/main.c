@@ -296,6 +296,11 @@ void xnu_init(void)
     // udelay(-1);
     write32((u64)g_xnu_entry - 0x6ab8, 0xf2aca332);
     printf("patched userspace's mapping\n");
+
+    write32((u64)g_xnu_entry + 0x14e168, (0xd10183ff | 0xfe000000) & ~(1<<24));
+    printf("patched pmap_map_bd's entry\n");
+
     msr(VBAR_EL1, _vt_vectors_start);
+//    reg_mask(SYS_IMP_APL_CYC_OVRD, CYC_OVRD_WFI_MODE_MASK, CYC_OVRD_WFI_MODE(0));
     printf("------------------------------Patched XNU Booting------------------------------\n");
 }
