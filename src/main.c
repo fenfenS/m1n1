@@ -238,74 +238,137 @@ extern void *iovbar_entry;
 void xnu_init(void)
 {
     printf("xnu_init before booting!\n");
-    printf("_vt_vectors_start at %p\n", _vt_vectors_start);
-    // redirect vbar
-    for (int i = 0; i < 16; i++) {
-        if (_vt_vectors_start[i * 0x20] == 0x14000000) {
-            _vt_vectors_start[i * 0x20] = 0x17c93000;
-            printf("set redirector at %p\n", &_vt_vectors_start[i * 0x20]);
+    if(chip_id == 0x8011) { //assume it's tvos 17.2 release
+        printf("_vt_vectors_start at %p\n", _vt_vectors_start);
+        // redirect vbar
+        for (int i = 0; i < 16; i++) {
+            if (_vt_vectors_start[i * 0x20] == 0x14000000) {
+                _vt_vectors_start[i * 0x20] = 0x17c93000;
+                printf("set redirector at %p\n", &_vt_vectors_start[i * 0x20]);
+            }
+            if (_vt_vectors_start[i * 0x20 + 1] == 0x14000000) {
+                _vt_vectors_start[i * 0x20 + 1] = 0x17c92fff;
+                printf("set redirector at %p\n", &_vt_vectors_start[i * 0x20 + 1]);
+            }
+            if (_vt_vectors_start[i * 0x20 + 2] == 0x14000000) {
+                _vt_vectors_start[i * 0x20 + 2] = 0x17c92ffe;
+                printf("set redirector at %p\n", &_vt_vectors_start[i * 0x20 + 2]);
+            }
+            msr(VBAR_EL1, _vt_vectors_start);
         }
-        if (_vt_vectors_start[i * 0x20 + 1] == 0x14000000) {
-            _vt_vectors_start[i * 0x20 + 1] = 0x17c92fff;
-            printf("set redirector at %p\n", &_vt_vectors_start[i * 0x20 + 1]);
+        if (read32((u64)g_xnu_entry + 0x6cbb20) == 0xd518c000) {
+            write32((u64)g_xnu_entry + 0x6cbb20, 0xd518c000 | 0xffe00000);
+            // make it undefined
+            write32((u64)g_xnu_entry + 0x4010, 0xd503201f);
+            // there's a check in kernel, bypass it
+        } else
+            printf("check msr vbar offset\n");
+
+        if (read32((u64)g_xnu_entry + 0x6cbb18) == 0xd5182020) {
+            write32((u64)g_xnu_entry + 0x6cbb18, 0xd5182020 | 0xffe00000);
+            // make it undefined
+            write32((u64)g_xnu_entry + 0x3fe8, 0xd503201f);
+            // there's a check in kernel, bypass it
+            printf("set ttbr1_el1 patched\n");
+        } else
+            printf("check msr ttbr offset\n");
+
+        // if(read32((u64)g_xnu_entry+0x6cbb28)  == 0xd5182040) {
+        //     write32((u64)g_xnu_entry+0x6cbb28, 0xd5182040|0xffe00000);
+        //     //make it undefined
+        //     write32((u64)g_xnu_entry+0x4038, 0xd503201f);
+        //     //there's a check in kernel, bypass it
+        //     printf("set tcr_el1 patched\n");
+        // }
+        // else printf("check msr tcr offset\n");
+
+        write32((u64)g_xnu_entry + 0x15ae14, 0xd503201f);
+        write32((u64)g_xnu_entry - 0x80, 0xd503201f);
+        printf("patched ktrr\n");
+        write64(0x202050000, (u64)&iovbar_entry | BIT(1));
+
+        // if(read32((u64)g_xnu_entry+0x4448)  == 0xd518d080) {
+        //   write32((u64)g_xnu_entry+0x4448, 0xd518d080|0xffe00000);
+        //     //make it undefined
+        //     printf("set one of msr TPIDR_EL1 patched\n");
+        // }
+        // else printf("check msr TPIDR_EL1 offset\n");
+
+        // udelay(-1);
+        write32((u64)g_xnu_entry - 0x6ab8, 0xf2aca332);
+        printf("patched userspace's mapping to make us available in el0's vbar_handler\n");
+
+        write32((u64)g_xnu_entry + 0x14a6a4, (0xd10603ff | 0xfe000000) & ~(1<<24));
+        printf("patched pmap_enter's function entry\n");
+        // write32((u64)g_xnu_entry + 0x14a34c, (0xd5088369 | 0xfffe0000));
+        // write32((u64)g_xnu_entry + 0x14a398, (0xd5088369 | 0xfffe0000));
+        // write32((u64)g_xnu_entry + 0x14f2f0, (0xd5088369 | 0xfffe0000));
+        // write32((u64)g_xnu_entry + 0x14f848, (0xd5088369 | 0xfffe0000));
+        // printf("patched tlbi vaae1is, x9\n");
+
+        msr(VBAR_EL1, _vt_vectors_start);
+    //    reg_mask(SYS_IMP_APL_CYC_OVRD, CYC_OVRD_WFI_MODE_MASK, CYC_OVRD_WFI_MODE(0));
+    }
+    else if(chip_id == 0x8015) { //assume it's 15.5 beta 4
+        printf("_vt_vectors_start at %p\n", _vt_vectors_start);
+        // redirect vbar to xnu's vbar_handler hardcode it for now
+        for (int i = 0; i < 16; i++) {
+            if (_vt_vectors_start[i * 0x20] == 0x14000000) {
+                _vt_vectors_start[i * 0x20] = 0x175bc400;
+                printf("set redirector at %p\n", &_vt_vectors_start[i * 0x20]);
+            }
+            if (_vt_vectors_start[i * 0x20 + 1] == 0x14000000) {
+                _vt_vectors_start[i * 0x20 + 1] = 0x175bc3ff;
+                printf("set redirector at %p\n", &_vt_vectors_start[i * 0x20 + 1]);
+            }
+            if (_vt_vectors_start[i * 0x20 + 2] == 0x14000000) {
+                _vt_vectors_start[i * 0x20 + 2] = 0x175bc3fe;
+                printf("set redirector at %p\n", &_vt_vectors_start[i * 0x20 + 2]);
+            }
+            msr(VBAR_EL1, _vt_vectors_start);
         }
-        if (_vt_vectors_start[i * 0x20 + 2] == 0x14000000) {
-            _vt_vectors_start[i * 0x20 + 2] = 0x17c92ffe;
-            printf("set redirector at %p\n", &_vt_vectors_start[i * 0x20 + 2]);
-        }
+        if (read32((u64)g_xnu_entry + 0x134fa98) == 0xd518c000) {
+            write32((u64)g_xnu_entry + 0x134fa98, 0xd518c000 | 0xffe00000);
+            // make it undefined
+            write32((u64)g_xnu_entry + 0x104f0, 0xd503201f);
+            // there's a check in kernel, bypass it
+        } else
+            printf("check msr vbar offset\n");
+
+        if (read32((u64)g_xnu_entry + 0x134fa90) == 0xd5182020) {
+            write32((u64)g_xnu_entry + 0x134fa90, 0xd5182020 | 0xffe00000);
+            // make it undefined
+            write32((u64)g_xnu_entry + 0x104c8, 0xd503201f);
+            // there's a check in kernel, bypass it
+            printf("set ttbr1_el1 patched\n");
+        } else
+            printf("check msr ttbr offset\n");
+
+
+        write32((u64)g_xnu_entry - 0x57f744, 0xd503201f);
+        write32((u64)g_xnu_entry - 0xb8, 0xd503201f);
+        printf("patched ktrr/ctrr\n");
+
+        write64(0x208050000, (u64)&iovbar_entry | BIT(1));
+        //running core's cpu-impl-reg
+
+        write32((u64)g_xnu_entry - 0x6b7c, 0xf2aca332);
+        printf("patched userspace's mapping to make us available in el0's vbar_handler\n");
+
+        write32((u64)g_xnu_entry - 0x593384, (0xd10603ff | 0xfe000000) & ~(1<<24));
+        printf("patched pmap_enter's function entry\n");
+
+        // write32((u64)g_xnu_entry + 0x14a34c, (0xd5088369 | 0xfffe0000));
+        // write32((u64)g_xnu_entry + 0x14a398, (0xd5088369 | 0xfffe0000));
+        // write32((u64)g_xnu_entry + 0x14f2f0, (0xd5088369 | 0xfffe0000));
+        // write32((u64)g_xnu_entry + 0x14f848, (0xd5088369 | 0xfffe0000));
+        // printf("patched tlbi vaae1is, x9\n");
+        // might be helpful in future
+
         msr(VBAR_EL1, _vt_vectors_start);
     }
-    if (read32((u64)g_xnu_entry + 0x6cbb20) == 0xd518c000) {
-        write32((u64)g_xnu_entry + 0x6cbb20, 0xd518c000 | 0xffe00000);
-        // make it undefined
-        write32((u64)g_xnu_entry + 0x4010, 0xd503201f);
-        // there's a check in kernel, bypass it
-    } else
-        printf("check msr vbar offset\n");
-
-    if (read32((u64)g_xnu_entry + 0x6cbb18) == 0xd5182020) {
-        write32((u64)g_xnu_entry + 0x6cbb18, 0xd5182020 | 0xffe00000);
-        // make it undefined
-        write32((u64)g_xnu_entry + 0x3fe8, 0xd503201f);
-        // there's a check in kernel, bypass it
-        printf("set ttbr1_el1 patched\n");
-    } else
-        printf("check msr ttbr offset\n");
-
-    // if(read32((u64)g_xnu_entry+0x6cbb28)  == 0xd5182040) {
-    //     write32((u64)g_xnu_entry+0x6cbb28, 0xd5182040|0xffe00000);
-    //     //make it undefined
-    //     write32((u64)g_xnu_entry+0x4038, 0xd503201f);
-    //     //there's a check in kernel, bypass it
-    //     printf("set tcr_el1 patched\n");
-    // }
-    // else printf("check msr tcr offset\n");
-
-    write32((u64)g_xnu_entry + 0x15ae14, 0xd503201f);
-    write32((u64)g_xnu_entry - 0x80, 0xd503201f);
-    printf("patched ktrr\n");
-    write64(0x202050000, (u64)&iovbar_entry | BIT(1));
-
-    // if(read32((u64)g_xnu_entry+0x4448)  == 0xd518d080) {
-    //   write32((u64)g_xnu_entry+0x4448, 0xd518d080|0xffe00000);
-    //     //make it undefined
-    //     printf("set one of msr TPIDR_EL1 patched\n");
-    // }
-    // else printf("check msr TPIDR_EL1 offset\n");
-
-    // udelay(-1);
-    write32((u64)g_xnu_entry - 0x6ab8, 0xf2aca332);
-    printf("patched userspace's mapping to make us available in el0's vbar_handler\n");
-
-    write32((u64)g_xnu_entry + 0x14a6a4, (0xd10603ff | 0xfe000000) & ~(1<<24));
-    printf("patched pmap_enter's function entry\n");
-    // write32((u64)g_xnu_entry + 0x14a34c, (0xd5088369 | 0xfffe0000));
-    // write32((u64)g_xnu_entry + 0x14a398, (0xd5088369 | 0xfffe0000));
-    // write32((u64)g_xnu_entry + 0x14f2f0, (0xd5088369 | 0xfffe0000));
-    // write32((u64)g_xnu_entry + 0x14f848, (0xd5088369 | 0xfffe0000));
-    // printf("patched tlbi vaae1is, x9\n");
-
-    msr(VBAR_EL1, _vt_vectors_start);
-//    reg_mask(SYS_IMP_APL_CYC_OVRD, CYC_OVRD_WFI_MODE_MASK, CYC_OVRD_WFI_MODE(0));
+    else {
+        printf("unsupported chip; skip patching!");
+    }
     printf("------------------------------Patched XNU Booting------------------------------\n");
 }

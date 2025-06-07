@@ -61,7 +61,7 @@ u64 pa2va(u64 pa) {
     return 0;
 }
 
-// #define DEBUG
+#define DEBUG
 
 #ifdef DEBUG
 #include "utils.h"
@@ -230,7 +230,7 @@ bool xnu_sync_msr(u64 *regs)
             // udelay(-1);
             break;
         default:
-            return false; // not matched; call original sync handler
+            return false; // not matched; call original xnu's sync handler
     }
     elr += 4;
     msr(ELR_EL1, elr);
