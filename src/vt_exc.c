@@ -19,7 +19,47 @@ u64 vt_pt_walk(u64 addr, u64 *ttbr_reg);
 u64 *vt_pt_getl3(u64 addr, u64 *ttbr_reg);
 void make_page_executable(u64 addr, u64 *ttbr_reg);
 
-u64 target_vm = 0;
+#define TRACE_MAX_SIZE 0x20
+typedef struct {
+    u64 va;
+    u64 pa;
+} TraceEntry;
+
+
+TraceEntry trace_table[TRACE_MAX_SIZE];
+int trace_count = 0;
+int add_trace_entry(u64 va, u64 pa) {
+    for (int i = 0; i < trace_count; ++i) {
+        if (trace_table[i].va == va || trace_table[i].pa == pa) {
+            return 0;
+        }
+    }
+    if (trace_count < TRACE_MAX_SIZE) {
+        trace_table[trace_count].va = va;
+        trace_table[trace_count].pa = pa;
+        trace_count++;
+        return 1;
+    }
+    return 0;
+}
+
+
+u64 va2pa(u64 va) {
+    for (int i = 0; i < trace_count; ++i) {
+        if (trace_table[i].va == va)
+            return trace_table[i].pa;
+    }
+    return 0;
+}
+
+
+u64 pa2va(u64 pa) {
+    for (int i = 0; i < trace_count; ++i) {
+        if (trace_table[i].pa == pa)
+            return trace_table[i].va;
+    }
+    return 0;
+}
 
 // #define DEBUG
 
@@ -329,12 +369,23 @@ bool xnu_sync_sub(u64 *regs)
         //AIC's register
         regs[3] = 0;   
     }
-    if( regs[2] == 0x600000000) {
-        target_vm = regs[1];
-        printf("pmap_enter(0x%lx, 0x%lx, 0x%lx, 0x%lx)\n",
-            regs[0], regs[1], regs[2], regs[3]);
-        regs[3] &= ~0x2;
-        //make it readonly
+
+    switch (regs[2])
+    {
+        case 0x610000000:
+        case 0x601000000:
+        case 0x601004000:
+        case 0x600000000:
+        case 0x600008000:
+        case 0x60a000000:
+            add_trace_entry(regs[1], regs[2]);
+            printf("pmap_enter(0x%lx, 0x%lx, 0x%lx, 0x%lx)\n",
+                regs[0], regs[1], regs[2], regs[3]);
+            regs[3] &= ~0x2;
+            //make it readonly
+            break;
+        default:
+            break;
     }
     elr += 4;
     msr(ELR_EL1, elr);
@@ -370,13 +421,18 @@ bool xnu_sync_da(u64 *regs)
     u64 val[8];
     memset32(val, 0, sizeof(val));
     emulate_store((struct exc_info *)regs, insn, val, &width, &vaddr);
+    u64 pa = va2pa(vaddr&~0x3fff) + (vaddr&0x3fff);
+    printf("[+] writing %lx to %lx (%lx)\n", val[0], pa, vaddr);
+    // using kernel's mmu now, we also can't write it directly...
+    // do the write using pa now
     if(width == 2) {
-        u64 pa = 0x600000000+(vaddr&0x3fff);
-        printf("[+] writing %lx to %lx\n", val[0], pa);
-        //using kernel's mmu now, we also can't write it directly...
-        // do the write now!
-        // udelay(-1);
         write32(pa, val[0]);
+    }
+    else if(width == 1) {
+        write16(pa, val[0]);
+    }
+    else if(width == 0) {
+        write8(pa, val[0]);
     }
     else {
         printf("[!]TBD: emulate_store ret width=0x%lx vaddr=0x%lx\n", width, far);
@@ -409,7 +465,7 @@ bool xnu_dispatch(u64 *regs)
     
         case ESR_EC_DABORT:
         case ESR_EC_DABORT_LOWER:
-                if((far&~0x3fff) == target_vm)
+                if(va2pa(far&~0x3fff))
                     return xnu_sync_da(regs);
                 return false;// not handle it now
                 // return xnu_sync_da(regs);
