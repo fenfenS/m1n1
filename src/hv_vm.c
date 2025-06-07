@@ -694,7 +694,7 @@ static bool emulate_load(struct exc_info *ctx, u32 insn, u64 *val, u64 *width, u
     return true;
 }
 
-static bool emulate_store(struct exc_info *ctx, u32 insn, u64 *val, u64 *width, u64 *vaddr)
+bool emulate_store(struct exc_info *ctx, u32 insn, u64 *val, u64 *width, u64 *vaddr)
 {
     u64 Rt = insn & 0x1f;
     u64 Rn = (insn >> 5) & 0x1f;

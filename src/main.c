@@ -295,10 +295,15 @@ void xnu_init(void)
 
     // udelay(-1);
     write32((u64)g_xnu_entry - 0x6ab8, 0xf2aca332);
-    printf("patched userspace's mapping\n");
+    printf("patched userspace's mapping to make us available in el0's vbar_handler\n");
 
-    write32((u64)g_xnu_entry + 0x14e168, (0xd10183ff | 0xfe000000) & ~(1<<24));
-    printf("patched pmap_map_bd's entry\n");
+    write32((u64)g_xnu_entry + 0x14a6a4, (0xd10603ff | 0xfe000000) & ~(1<<24));
+    printf("patched pmap_enter's function entry\n");
+    // write32((u64)g_xnu_entry + 0x14a34c, (0xd5088369 | 0xfffe0000));
+    // write32((u64)g_xnu_entry + 0x14a398, (0xd5088369 | 0xfffe0000));
+    // write32((u64)g_xnu_entry + 0x14f2f0, (0xd5088369 | 0xfffe0000));
+    // write32((u64)g_xnu_entry + 0x14f848, (0xd5088369 | 0xfffe0000));
+    // printf("patched tlbi vaae1is, x9\n");
 
     msr(VBAR_EL1, _vt_vectors_start);
 //    reg_mask(SYS_IMP_APL_CYC_OVRD, CYC_OVRD_WFI_MODE_MASK, CYC_OVRD_WFI_MODE(0));

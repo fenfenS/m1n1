@@ -19,6 +19,8 @@ u64 vt_pt_walk(u64 addr, u64 *ttbr_reg);
 u64 *vt_pt_getl3(u64 addr, u64 *ttbr_reg);
 void make_page_executable(u64 addr, u64 *ttbr_reg);
 
+u64 target_vm = 0;
+
 // #define DEBUG
 
 #ifdef DEBUG
@@ -288,7 +290,17 @@ void make_page_executable(u64 addr, u64 *ttbr_reg)
     vt_dprintf("[-] l3 entry = 0x%lx at %p\n", l3_entry, l3_addr);
     write64((u64)l3_addr, l3_entry & ~(BIT(53) | BIT(54)));
     // remove xn/pxn bits
-    vt_dprintf("[+] l3 entry = 0x%lx at %p\n", *l3_addr, l3_addr);
+    vt_dprintf("[+] executable l3 entry = 0x%lx at %p\n", *l3_addr, l3_addr);
+}
+
+void make_page_readonly(u64 addr, u64 *ttbr_reg)
+{
+    u64 *l3_addr = vt_pt_getl3((u64)addr, (u64 *)ttbr_reg);
+    u64 l3_entry = *l3_addr;
+    vt_dprintf("[-] l3 entry = 0x%lx at %p\n", l3_entry, l3_addr);
+    write64((u64)l3_addr, l3_entry | BIT(7));
+    // remove xn/pxn bits
+    vt_dprintf("[+] read only l3 entry = 0x%lx at %p\n", *l3_addr, l3_addr);
 }
 
 #define INSN_SUB_RD GENMASK(4,0)
@@ -317,8 +329,30 @@ bool xnu_sync_sub(u64 *regs)
         //AIC's register
         regs[3] = 0;   
     }
-    printf("pmap_map_bd(0x%lx, 0x%lx, 0x%lx, 0x%lx)\n",
-        regs[0], regs[1], regs[2], regs[3]);
+    if( regs[2] == 0x600000000) {
+        target_vm = regs[1];
+        printf("pmap_enter(0x%lx, 0x%lx, 0x%lx, 0x%lx)\n",
+            regs[0], regs[1], regs[2], regs[3]);
+        regs[3] &= ~0x2;
+        //make it readonly
+    }
+    elr += 4;
+    msr(ELR_EL1, elr);
+    return true;
+}
+
+bool xnu_sync_tbli(u64 *regs)
+{
+    //target is tlbi vaae1is, x9
+    u64 elr = mrs(ELR_EL1);
+    printf("tlbi vaae1is, x9=0x%lx\n", regs[9]);
+    __asm__ volatile (
+    "mov x9, %0\n"
+    "tlbi vaae1is, x9"
+    :
+    : "r" (regs[9])
+    : "x9" 
+    );
     elr += 4;
     msr(ELR_EL1, elr);
     return true;
@@ -329,24 +363,34 @@ extern bool emulate_store(struct exc_info *ctx, u32 insn, u64 *val, u64 *width, 
 bool xnu_sync_da(u64 *regs)
 {
     u64 elr = mrs(ELR_EL1);
-    // u64 far = mrs(FAR_EL1);
-    // u32 insn = read32(elr);
-    // u64 width;
-    // u64 vaddr = far;
-    // u8 val[64];
-    // memset32(val, 0, sizeof(val));
-    // emulate_store((struct exc_info *)regs, insn, (u64 *)val, &width, &vaddr);
-    // printf("emulate_store ret width=0x%lx vaddr=0x%lx\n", width, far);
-    // udelay(-1);
-    u64 esr = mrs(ESR_EL1);
-    u32 ec = FIELD_GET(ESR_ISS_DABORT_DFSC, esr);
-    printf("DA %x at 0x%lx\n", ec, elr);
-    return false;
+    u64 far = mrs(FAR_EL1);
+    u32 insn = read32(elr);
+    u64 width;
+    u64 vaddr = far;
+    u64 val[8];
+    memset32(val, 0, sizeof(val));
+    emulate_store((struct exc_info *)regs, insn, val, &width, &vaddr);
+    if(width == 2) {
+        u64 pa = 0x600000000+(vaddr&0x3fff);
+        printf("[+] writing %lx to %lx\n", val[0], pa);
+        //using kernel's mmu now, we also can't write it directly...
+        // do the write now!
+        // udelay(-1);
+        write32(pa, val[0]);
+    }
+    else {
+        printf("[!]TBD: emulate_store ret width=0x%lx vaddr=0x%lx\n", width, far);
+        udelay(-1);
+    }
+    elr += 4;
+    msr(ELR_EL1, elr);
+    return true;
 }
 
 bool xnu_dispatch(u64 *regs)
 {
     u64 esr = mrs(ESR_EL1);
+    u64 far = mrs(FAR_EL1);
     u32 insn;
     u32 ec = FIELD_GET(ESR_EC, esr);
 
@@ -355,6 +399,8 @@ bool xnu_dispatch(u64 *regs)
         case ESR_EC_IABORT_LOWER:
         case ESR_EC_UNKNOWN:
             insn = read32(mrs(ELR_EL1));
+            if ((insn & 0xfffe0000) == 0xfffe0000)
+                return xnu_sync_tbli(regs);
             if ((insn & 0xffe00000) == 0xffe00000)
                 return xnu_sync_msr(regs);
             if ((insn & 0xff000000) == 0xfe000000)
@@ -363,6 +409,8 @@ bool xnu_dispatch(u64 *regs)
     
         case ESR_EC_DABORT:
         case ESR_EC_DABORT_LOWER:
+                if((far&~0x3fff) == target_vm)
+                    return xnu_sync_da(regs);
                 return false;// not handle it now
                 // return xnu_sync_da(regs);
             break;
