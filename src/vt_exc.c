@@ -28,40 +28,8 @@ typedef struct {
 
 TraceEntry trace_table[TRACE_MAX_SIZE];
 int trace_count = 0;
-int add_trace_entry(u64 va, u64 pa) {
-    for (int i = 0; i < trace_count; ++i) {
-        if (trace_table[i].va == va || trace_table[i].pa == pa) {
-            return 0;
-        }
-    }
-    if (trace_count < TRACE_MAX_SIZE) {
-        trace_table[trace_count].va = va;
-        trace_table[trace_count].pa = pa;
-        trace_count++;
-        return 1;
-    }
-    return 0;
-}
 
-
-u64 va2pa(u64 va) {
-    for (int i = 0; i < trace_count; ++i) {
-        if (trace_table[i].va == va)
-            return trace_table[i].pa;
-    }
-    return 0;
-}
-
-
-u64 pa2va(u64 pa) {
-    for (int i = 0; i < trace_count; ++i) {
-        if (trace_table[i].pa == pa)
-            return trace_table[i].va;
-    }
-    return 0;
-}
-
-#define DEBUG
+// #define DEBUG
 
 #ifdef DEBUG
 #include "utils.h"
@@ -134,6 +102,39 @@ u64 pa2va(u64 pa) {
         printf("[=] write 0x%lx to %s\n", regv, #sr);                                              \
         _msr(sr_tkn(sr), regv);                                                                    \
         break;
+
+int add_trace_entry(u64 va, u64 pa) {
+    for (int i = 0; i < trace_count; ++i) {
+        if (trace_table[i].va == va || trace_table[i].pa == pa) {
+            return 0;
+        }
+    }
+    if (trace_count < TRACE_MAX_SIZE) {
+        trace_table[trace_count].va = va;
+        trace_table[trace_count].pa = pa;
+        trace_count++;
+        return 1;
+    }
+    return 0;
+}
+
+
+u64 va2pa(u64 va) {
+    for (int i = 0; i < trace_count; ++i) {
+        if (trace_table[i].va == va)
+            return trace_table[i].pa;
+    }
+    return 0;
+}
+
+
+u64 pa2va(u64 pa) {
+    for (int i = 0; i < trace_count; ++i) {
+        if (trace_table[i].pa == pa)
+            return trace_table[i].va;
+    }
+    return 0;
+}
 
 u64 xnu_vbar_el1 = 0;
 bool xnu_sync_msr(u64 *regs)
@@ -422,17 +423,19 @@ bool xnu_sync_da(u64 *regs)
     memset32(val, 0, sizeof(val));
     emulate_store((struct exc_info *)regs, insn, val, &width, &vaddr);
     u64 pa = va2pa(vaddr&~0x3fff) + (vaddr&0x3fff);
-    printf("[+] writing %lx to %lx (%lx)\n", val[0], pa, vaddr);
     // using kernel's mmu now, we also can't write it directly...
     // do the write using pa now
     if(width == 2) {
         write32(pa, val[0]);
+        printf("[+] writing32 0x%08lx to 0x%08lx (%lx)\n", val[0], pa, vaddr);
     }
     else if(width == 1) {
         write16(pa, val[0]);
+        printf("[+] writing16 0x%08lx to 0x%08lx (%lx)\n", val[0], pa, vaddr);
     }
     else if(width == 0) {
         write8(pa, val[0]);
+        printf("[+] writing8 0x%08lx to 0x%08lx (%lx)\n", val[0], pa, vaddr);
     }
     else {
         printf("[!]TBD: emulate_store ret width=0x%lx vaddr=0x%lx\n", width, far);

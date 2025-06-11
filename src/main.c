@@ -312,17 +312,77 @@ void xnu_init(void)
     else if(chip_id == 0x8015) { //assume it's 15.5 beta 4
         printf("_vt_vectors_start at %p\n", _vt_vectors_start);
         // redirect vbar to xnu's vbar_handler hardcode it for now
+        // check the second VA in vbar set log
         for (int i = 0; i < 16; i++) {
             if (_vt_vectors_start[i * 0x20] == 0x14000000) {
-                _vt_vectors_start[i * 0x20] = 0x175bc400;
+                _vt_vectors_start[i * 0x20] = 0x179de000;
                 printf("set redirector at %p\n", &_vt_vectors_start[i * 0x20]);
             }
             if (_vt_vectors_start[i * 0x20 + 1] == 0x14000000) {
-                _vt_vectors_start[i * 0x20 + 1] = 0x175bc3ff;
+                _vt_vectors_start[i * 0x20 + 1] = 0x179ddfff;
                 printf("set redirector at %p\n", &_vt_vectors_start[i * 0x20 + 1]);
             }
             if (_vt_vectors_start[i * 0x20 + 2] == 0x14000000) {
-                _vt_vectors_start[i * 0x20 + 2] = 0x175bc3fe;
+                _vt_vectors_start[i * 0x20 + 2] = 0x179ddffe;
+                printf("set redirector at %p\n", &_vt_vectors_start[i * 0x20 + 2]);
+            }
+            msr(VBAR_EL1, _vt_vectors_start);
+        }
+        if (read32((u64)g_xnu_entry + 0x134fa98) == 0xd518c000) {
+            write32((u64)g_xnu_entry + 0x134fa98, 0xd518c000 | 0xffe00000);
+            // make it undefined
+            write32((u64)g_xnu_entry + 0x104f0, 0xd503201f);
+            // there's a check in kernel, bypass it
+        } else
+            printf("check msr vbar offset\n");
+
+        if (read32((u64)g_xnu_entry + 0x134fa90) == 0xd5182020) {
+            write32((u64)g_xnu_entry + 0x134fa90, 0xd5182020 | 0xffe00000);
+            // make it undefined
+            write32((u64)g_xnu_entry + 0x104c8, 0xd503201f);
+            // there's a check in kernel, bypass it
+            printf("set ttbr1_el1 patched\n");
+        } else
+            printf("check msr ttbr offset\n");
+
+
+        write32((u64)g_xnu_entry - 0x57f744, 0xd503201f);
+        write32((u64)g_xnu_entry - 0xb8, 0xd503201f);
+        printf("patched ktrr/ctrr\n");
+
+        write64(0x208050000, (u64)&iovbar_entry | BIT(1));
+        //running core's cpu-impl-reg
+
+        write32((u64)g_xnu_entry - 0x6b7c, 0xf2aca332);
+        printf("patched userspace's mapping to make us available in el0's vbar_handler\n");
+
+        write32((u64)g_xnu_entry - 0x593384, (0xd10603ff | 0xfe000000) & ~(1<<24));
+        printf("patched pmap_enter's function entry\n");
+
+        // write32((u64)g_xnu_entry + 0x14a34c, (0xd5088369 | 0xfffe0000));
+        // write32((u64)g_xnu_entry + 0x14a398, (0xd5088369 | 0xfffe0000));
+        // write32((u64)g_xnu_entry + 0x14f2f0, (0xd5088369 | 0xfffe0000));
+        // write32((u64)g_xnu_entry + 0x14f848, (0xd5088369 | 0xfffe0000));
+        // printf("patched tlbi vaae1is, x9\n");
+        // might be helpful in future
+
+        msr(VBAR_EL1, _vt_vectors_start);
+    }
+    else if(chip_id == 0x8010) { //assume it's 18.5 Release
+        printf("_vt_vectors_start at %p\n", _vt_vectors_start);
+        // redirect vbar to xnu's vbar_handler hardcode it for now
+        // check the second VA in vbar set log
+        for (int i = 0; i < 16; i++) {
+            if (_vt_vectors_start[i * 0x20] == 0x14000000) {
+                _vt_vectors_start[i * 0x20] = 0x179de000;
+                printf("set redirector at %p\n", &_vt_vectors_start[i * 0x20]);
+            }
+            if (_vt_vectors_start[i * 0x20 + 1] == 0x14000000) {
+                _vt_vectors_start[i * 0x20 + 1] = 0x179ddfff;
+                printf("set redirector at %p\n", &_vt_vectors_start[i * 0x20 + 1]);
+            }
+            if (_vt_vectors_start[i * 0x20 + 2] == 0x14000000) {
+                _vt_vectors_start[i * 0x20 + 2] = 0x179ddffe;
                 printf("set redirector at %p\n", &_vt_vectors_start[i * 0x20 + 2]);
             }
             msr(VBAR_EL1, _vt_vectors_start);
