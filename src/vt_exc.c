@@ -161,6 +161,9 @@ bool xnu_sync_msr(u64 *regs)
                 // set vbar_el1 to virt addr of our handler
                 _vt_vectors_start_va = (u32 *)phy2virt(_vt_vectors_start);
                 msr(VBAR_EL1, _vt_vectors_start_va);
+                if(!xnu_vbar_el1) {
+                    xnu_vbar_el1 = reg_value;
+                }
             } else
                 vt_dprintf("just ignore it!\n");
 
@@ -174,30 +177,6 @@ bool xnu_sync_msr(u64 *regs)
             // msr(VBAR_EL1, reg_value);
             // PLAN: patch the l3 pte of real vbar_handler; but we can't reach real vbar_handler any
             // more!!!
-            // u64 *vbar_handler_l3 = vt_pt_getl3(reg_value, (u64*)mrs(TTBR1_EL1));
-            // u64 paddr_vbar_handler = *vbar_handler_l3 & GENMASK(47, 12);
-            // vt_dprintf("paddr at 0x%lx; ours at %p\n", paddr_vbar_handler, _vt_vectors_start);
-            // write64((u64)vbar_handler_l3, (*vbar_handler_l3 & ~GENMASK(47, 12)) |
-            // (u64)_vt_vectors_start); vt_pt_walk(reg_value, (u64*)mrs(TTBR1_EL1)); msr(VBAR_EL1,
-            // reg_value);
-
-            // u64 ttbr0 = mrs(TTBR0_EL1);
-            // u64 tcr = mrs(TCR_EL1);
-            // vt_dprintf("vt_vectors_start at %p; ttbr0 is at 0x%lx\n", _vt_vectors_start, ttbr0);
-            // xnu_vbar_el1 = reg_value;
-            // for (int i=0; i < 16; i++ ){
-            //     if(_vt_vectors_start[i*0x20] == 0x14000000) {
-            //         _vt_vectors_start[i*0x20] = 0x17c95600;
-            //         vt_dprintf("set redirector at %p\n", &_vt_vectors_start[i*0x20]);
-            //     }
-            //     if(_vt_vectors_start[i*0x20+1] == 0x14000000) {
-            //         _vt_vectors_start[i*0x20+1] = 0x17c955ff;
-            //         vt_dprintf("set redirector at %p\n", &_vt_vectors_start[i*0x20+1]);
-            //     }
-            //     msr(VBAR_EL1, _vt_vectors_start);
-            // }
-
-            // udelay(-1);
             vt_dprintf("current vbar_el1 = 0x%lx\n", mrs(VBAR_EL1));
             break;
         case SYSREG_MSR(SYSREG_TTBR1_EL1):
@@ -226,7 +205,31 @@ bool xnu_sync_msr(u64 *regs)
                 make_page_executable((u64)_vt_vectors_start_va, (u64 *)reg_value);
                 u64 _vt_m1n1_call_va = (u64)phy2virt(&_vt_m1n1_call);
                 make_page_executable(_vt_m1n1_call_va, (u64 *)reg_value);
-                // udelay(-1);
+                if(xnu_vbar_el1) {
+                    //use xnu's mmu to patch director, since it's rx in m1n1's mapping
+                    vt_dprintf("fixing b instruction's offset of redirector\n");
+                    s32 redirect_offset = (s32)(xnu_vbar_el1 - (u64)_vt_vectors_start_va);
+                    if(redirect_offset % 4 != 0 || 
+                    redirect_offset < -(1LL << 27) || redirect_offset > ((1LL << 27) - 4)) {
+                        printf("check offset! _vt_vectors_start_va va=%p xnu_handler_va=0x%lx\n",
+                            _vt_vectors_start_va, xnu_vbar_el1);
+                    }
+                    u32 imm26 = (redirect_offset>>2) & 0x3FFFFFF;
+                    for (int i = 0; i < 16; i++) {
+                        if (_vt_vectors_start_va[i * 0x20] == 0x14000000) {
+                            _vt_vectors_start_va[i * 0x20] = 0x14000000|imm26;
+                            printf("patch redirector at %p\n", &_vt_vectors_start_va[i * 0x20]);
+                        }
+                        if (_vt_vectors_start_va[i * 0x20 + 1] == 0x14000000) {
+                            _vt_vectors_start_va[i * 0x20 + 1] = 0x14000000|(imm26-1);
+                            printf("patch redirector at %p\n", &_vt_vectors_start_va[i * 0x20 + 1]);
+                        }
+                        if (_vt_vectors_start_va[i * 0x20 + 2] == 0x14000000) {
+                            _vt_vectors_start_va[i * 0x20 + 2] = 0x14000000|(imm26-2);
+                            printf("patch redirector at %p\n", &_vt_vectors_start_va[i * 0x20 + 2]);
+                        }
+                    }
+                }
             }
             // udelay(-1);
             break;

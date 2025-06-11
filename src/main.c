@@ -240,22 +240,7 @@ void xnu_init(void)
     printf("xnu_init before booting!\n");
     if(chip_id == 0x8011) { //assume it's tvos 17.2 release
         printf("_vt_vectors_start at %p\n", _vt_vectors_start);
-        // redirect vbar
-        for (int i = 0; i < 16; i++) {
-            if (_vt_vectors_start[i * 0x20] == 0x14000000) {
-                _vt_vectors_start[i * 0x20] = 0x17c93000;
-                printf("set redirector at %p\n", &_vt_vectors_start[i * 0x20]);
-            }
-            if (_vt_vectors_start[i * 0x20 + 1] == 0x14000000) {
-                _vt_vectors_start[i * 0x20 + 1] = 0x17c92fff;
-                printf("set redirector at %p\n", &_vt_vectors_start[i * 0x20 + 1]);
-            }
-            if (_vt_vectors_start[i * 0x20 + 2] == 0x14000000) {
-                _vt_vectors_start[i * 0x20 + 2] = 0x17c92ffe;
-                printf("set redirector at %p\n", &_vt_vectors_start[i * 0x20 + 2]);
-            }
-            msr(VBAR_EL1, _vt_vectors_start);
-        }
+        msr(VBAR_EL1, _vt_vectors_start);
         if (read32((u64)g_xnu_entry + 0x6cbb20) == 0xd518c000) {
             write32((u64)g_xnu_entry + 0x6cbb20, 0xd518c000 | 0xffe00000);
             // make it undefined
@@ -313,21 +298,7 @@ void xnu_init(void)
         printf("_vt_vectors_start at %p\n", _vt_vectors_start);
         // redirect vbar to xnu's vbar_handler hardcode it for now
         // check the second VA in vbar set log
-        for (int i = 0; i < 16; i++) {
-            if (_vt_vectors_start[i * 0x20] == 0x14000000) {
-                _vt_vectors_start[i * 0x20] = 0x179de000;
-                printf("set redirector at %p\n", &_vt_vectors_start[i * 0x20]);
-            }
-            if (_vt_vectors_start[i * 0x20 + 1] == 0x14000000) {
-                _vt_vectors_start[i * 0x20 + 1] = 0x179ddfff;
-                printf("set redirector at %p\n", &_vt_vectors_start[i * 0x20 + 1]);
-            }
-            if (_vt_vectors_start[i * 0x20 + 2] == 0x14000000) {
-                _vt_vectors_start[i * 0x20 + 2] = 0x179ddffe;
-                printf("set redirector at %p\n", &_vt_vectors_start[i * 0x20 + 2]);
-            }
-            msr(VBAR_EL1, _vt_vectors_start);
-        }
+        msr(VBAR_EL1, _vt_vectors_start);
         if (read32((u64)g_xnu_entry + 0x134fa98) == 0xd518c000) {
             write32((u64)g_xnu_entry + 0x134fa98, 0xd518c000 | 0xffe00000);
             // make it undefined
@@ -370,23 +341,7 @@ void xnu_init(void)
     }
     else if(chip_id == 0x8010) { //assume it's 18.5 Release
         printf("_vt_vectors_start at %p\n", _vt_vectors_start);
-        // redirect vbar to xnu's vbar_handler hardcode it for now
-        // check the second VA in vbar set log
-        for (int i = 0; i < 16; i++) {
-            if (_vt_vectors_start[i * 0x20] == 0x14000000) {
-                _vt_vectors_start[i * 0x20] = 0x179de000;
-                printf("set redirector at %p\n", &_vt_vectors_start[i * 0x20]);
-            }
-            if (_vt_vectors_start[i * 0x20 + 1] == 0x14000000) {
-                _vt_vectors_start[i * 0x20 + 1] = 0x179ddfff;
-                printf("set redirector at %p\n", &_vt_vectors_start[i * 0x20 + 1]);
-            }
-            if (_vt_vectors_start[i * 0x20 + 2] == 0x14000000) {
-                _vt_vectors_start[i * 0x20 + 2] = 0x179ddffe;
-                printf("set redirector at %p\n", &_vt_vectors_start[i * 0x20 + 2]);
-            }
-            msr(VBAR_EL1, _vt_vectors_start);
-        }
+        msr(VBAR_EL1, _vt_vectors_start);
         if (read32((u64)g_xnu_entry + 0x134fa98) == 0xd518c000) {
             write32((u64)g_xnu_entry + 0x134fa98, 0xd518c000 | 0xffe00000);
             // make it undefined
