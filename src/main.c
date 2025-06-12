@@ -32,7 +32,6 @@
 
 extern void *g_xnu_entry;
 extern void *g_bootargs;
-// extern void _vt_xnu_init;
 struct vt_mmu_info _vt_mmuinfo;
 
 struct vector_args next_stage;
@@ -42,7 +41,8 @@ const char *const m1n1_version = version_tag + 12;
 
 u32 board_id = ~0, chip_id = ~0;
 
-void xnu_init(void);
+void xnu_patch(void);
+bool check_remote_booting(void);
 void get_device_info(void)
 {
     const char *model = (const char *)adt_getprop(adt, 0, "model", NULL);
@@ -187,12 +187,11 @@ void m1n1_main(void)
 
     printf("Initialization complete.\n");
 
+    bool is_remote_booting = false;
     if (g_xnu_entry != 0) {
         printf("xnu_entry from pongoOS at %p\n", g_xnu_entry);
         printf("g_bootargs = %p; cur_boot_args=%p\n", g_bootargs, &cur_boot_args);
-        cur_boot_args.top_of_kernel_data += 0x800000; // 8MB
-        next_stage.entry = g_xnu_entry;
-        next_stage.args[0] = (u64)&cur_boot_args;
+        is_remote_booting = check_remote_booting();
     } else
         run_actions();
 
@@ -223,8 +222,14 @@ void m1n1_main(void)
 #endif
 
     printf("Vectoring to next stage...\n");
-    
-    xnu_init();
+    if(is_remote_booting)
+        __asm__ volatile (
+        "mov x18, %0\n"
+        :
+        : "r" (g_xnu_entry)
+        : "x18" 
+        );
+        //need something safer than here
 
     next_stage.entry(next_stage.args[0], next_stage.args[1], next_stage.args[2], next_stage.args[3],
                      next_stage.args[4]);
@@ -232,12 +237,52 @@ void m1n1_main(void)
     panic("Next stage returned!\n");
 }
 
+bool check_remote_booting(void) {
+    int anode = adt_path_offset(adt, "/chosen/memory-map");
+    if (anode < 0) {
+        printf("check_remote_booting: /chosen/memory-map not found\n");
+        return false;
+    }
+    u64 sepfw[2];
+    u64 ramdisk[2];
+    if (ADT_GETPROP_ARRAY(adt, anode, "SEPFW", sepfw) < 0) {
+        printf("check_remote_booting: Failed to find SEPFW\n");
+        return false;
+    }
+    if (ADT_GETPROP_ARRAY(adt, anode, "RAMDisk", ramdisk) < 0) {
+        printf("check_remote_booting: Failed to find DeviceTree\n");
+        return false;
+    }
+    // void* new_base = (void*)(sepfw[0] + 1024*1024*16);
+    size_t m1n1_size = _end - _base;
+    void* new_base = (void*)(ramdisk[0]);
+
+    if(sepfw[1] == 0xa400000 && _base != (new_base-m1n1_size)) {
+        printf("suspect remote booting with the 164MB sep fw!\n");
+        printf("assume m1n1.bin is the end of ramdisk.dmg!!\n");
+        printf("currently _base=%p, _end=%p\n", _base, _end);
+        next_stage.entry = new_base + 0x800;
+        next_stage.args[0] = (u64)&cur_boot_args;
+        ramdisk[0] += m1n1_size;
+        ramdisk[1] -= m1n1_size;
+        adt_setprop(adt, anode, "RAMDisk", ramdisk, sizeof(ramdisk));
+        return true;
+    }
+    else {
+        xnu_patch();
+        cur_boot_args.top_of_kernel_data += 0x800000; // 8MB
+        next_stage.entry = g_xnu_entry;
+        next_stage.args[0] = (u64)&cur_boot_args;
+        return false;
+    }
+}
+
 extern u32 _vt_vectors_start[];
 extern void *iovbar_entry;
 
-void xnu_init(void)
+void xnu_patch(void)
 {
-    printf("xnu_init before booting!\n");
+    printf("xnu_patch before booting!\n");
     if(chip_id == 0x8011) { //assume it's tvos 17.2 release
         printf("_vt_vectors_start at %p\n", _vt_vectors_start);
         msr(VBAR_EL1, _vt_vectors_start);

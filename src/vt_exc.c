@@ -213,6 +213,7 @@ bool xnu_sync_msr(u64 *regs)
                     redirect_offset < -(1LL << 27) || redirect_offset > ((1LL << 27) - 4)) {
                         printf("check offset! _vt_vectors_start_va va=%p xnu_handler_va=0x%lx\n",
                             _vt_vectors_start_va, xnu_vbar_el1);
+                        udelay(-1);
                     }
                     u32 imm26 = (redirect_offset>>2) & 0x3FFFFFF;
                     for (int i = 0; i < 16; i++) {
