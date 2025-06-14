@@ -64,6 +64,25 @@ now we can call any m1n1's function
     sp is El1h's
 
  */
+_vt_m1n1_call_sp1:
+    sub sp, sp, #(SIZEOF_EXC_INFO - 32 * 8)
+    str x30, [sp, #-16]!
+    bl _vt_entry
+    mrs x1, TTBR0_EL1
+    str x1, [sp, #0x1e8]
+    mrs x2, TCR_EL1
+    str x2, [sp, #0x1e0]
+    mrs x3, MAIR_EL1
+    str x3, [sp, #0x1d8]
+    mrs x4, pan
+    str x4, [sp, #0x1d0]
+    msr pan, #0
+    // the return function is in low mem or high mem, depend on the orginal pc
+    // save it for call return later
+    adr x3, _vt_ereturn
+    str x3, [sp, #0x1f8] //use extra void* to save ret func in high addr
+    adr x3, _vt_return_orignal_sync_sp1
+    b _vt_m1n1_call_common
 
 _vt_m1n1_call: //switch to m1n1 context and call x18
 //pc/sp at high mem range, sp is writable
@@ -84,6 +103,7 @@ _vt_m1n1_call: //switch to m1n1 context and call x18
     adr x3, _vt_ereturn
     str x3, [sp, #0x1f8] //use extra void* to save ret func in high addr
     adr x3, _vt_return_orignal_sync
+_vt_m1n1_call_common:
     str x3, [sp, #0x1f0] //same as above
     adr x5, _vt_mmuinfo
     ldr x5, [x5] // _vt_mmuinfo.virt_phy_off
@@ -189,7 +209,6 @@ _vt_m1n1_call_early: //switch to m1n1 context when mmu on and stack writable
 .align 11
 
 .globl _vt_vectors_start
-.globl _vt_vectors_el1_sp1_sync
 _vt_vectors_start:
 
     /* EL1 with SP_EL0 */
@@ -205,7 +224,7 @@ _vt_call_orignal_sync:
     .align 7
 
     /* EL1 with SP_EL1 */
-    b check_x2
+    b check_x2_sp1
 _vt_vectors_el1_sp1_sync:
     b .
     .align 7
@@ -344,6 +363,106 @@ check_x2:
     not_equal:
     b _vt_m1n1_call
 
+check_x2_sp1:
+    // b .
+    //        0xd65f03c0d5182020 -> ttbr1
+    //        0xd65f03c0d518c000 -> vbar_el1
+    // have only checked x2 for this two to detect if it's early stage
+
+    // byte1: 0x20 (0010 0000)
+    CHECK_0 x2, 0, not_equal_sp1
+    CHECK_0 x2, 1, not_equal_sp1
+    CHECK_0 x2, 2, not_equal_sp1
+    CHECK_0 x2, 3, not_equal_sp1
+    CHECK_0 x2, 4, not_equal_sp1
+    //CHECK_1 x2, 5, not_equal_sp1
+    CHECK_0 x2, 6, not_equal_sp1
+    CHECK_0 x2, 7, not_equal_sp1
+
+    // byte2: 0x20 (0010 0000)
+    CHECK_0 x2, 8, not_equal_sp1
+    CHECK_0 x2, 9, not_equal_sp1
+    CHECK_0 x2, 10, not_equal_sp1
+    CHECK_0 x2, 11, not_equal_sp1
+    CHECK_0 x2, 12, not_equal_sp1
+    //CHECK_1 x2, 13, not_equal_sp1
+    //CHECK_0 x2, 14, not_equal_sp1
+    //CHECK_0 x2, 15, not_equal_sp1
+
+    // byte3: 0x18 (0001 1000)
+    CHECK_0 x2, 16, not_equal_sp1
+    CHECK_0 x2, 17, not_equal_sp1
+    CHECK_0 x2, 18, not_equal_sp1
+    CHECK_1 x2, 19, not_equal_sp1
+    CHECK_1 x2, 20, not_equal_sp1
+    CHECK_0 x2, 21, not_equal_sp1
+    CHECK_0 x2, 22, not_equal_sp1
+    CHECK_0 x2, 23, not_equal_sp1
+
+    // byte4: 0xd5 (1101 0101)
+    CHECK_1 x2, 24, not_equal_sp1
+    CHECK_0 x2, 25, not_equal_sp1
+    CHECK_1 x2, 26, not_equal_sp1
+    CHECK_0 x2, 27, not_equal_sp1
+    CHECK_1 x2, 28, not_equal_sp1
+    CHECK_0 x2, 29, not_equal_sp1
+    CHECK_1 x2, 30, not_equal_sp1
+    CHECK_1 x2, 31, not_equal_sp1
+
+    // byte5: 0xc0 (1100 0000)
+    CHECK_0 x2, 32, not_equal_sp1
+    CHECK_0 x2, 33, not_equal_sp1
+    CHECK_0 x2, 34, not_equal_sp1
+    CHECK_0 x2, 35, not_equal_sp1
+    CHECK_0 x2, 36, not_equal_sp1
+    CHECK_0 x2, 37, not_equal_sp1
+    CHECK_1 x2, 38, not_equal_sp1
+    CHECK_1 x2, 39, not_equal_sp1
+
+    // byte6: 0x03 (0000 0011)
+    CHECK_1 x2, 40, not_equal_sp1
+    CHECK_1 x2, 41, not_equal_sp1
+    CHECK_0 x2, 42, not_equal_sp1
+    CHECK_0 x2, 43, not_equal_sp1
+    CHECK_0 x2, 44, not_equal_sp1
+    CHECK_0 x2, 45, not_equal_sp1
+    CHECK_0 x2, 46, not_equal_sp1
+    CHECK_0 x2, 47, not_equal_sp1
+
+    // byte7: 0x5f (0101 1111)
+    CHECK_1 x2, 48, not_equal_sp1
+    CHECK_1 x2, 49, not_equal_sp1
+    CHECK_1 x2, 50, not_equal_sp1
+    CHECK_1 x2, 51, not_equal_sp1
+    CHECK_1 x2, 52, not_equal_sp1
+    CHECK_0 x2, 53, not_equal_sp1
+    CHECK_1 x2, 54, not_equal_sp1
+    CHECK_0 x2, 55, not_equal_sp1
+
+    // byte8: 0xd6 (1101 0110)
+    CHECK_0 x2, 56, not_equal_sp1
+    CHECK_1 x2, 57, not_equal_sp1
+    CHECK_1 x2, 58, not_equal_sp1
+    CHECK_0 x2, 59, not_equal_sp1
+    CHECK_1 x2, 60, not_equal_sp1
+    CHECK_0 x2, 61, not_equal_sp1
+    CHECK_1 x2, 62, not_equal_sp1
+    CHECK_1 x2, 63, not_equal_sp1
+
+    equal_sp1:
+    //corrupt x2/x3 to have a good stack
+    mov x3, sp
+    adr x2, _vt_m1n1_call_sp1
+    tbnz    x2, #63, _vt_m1n1_call_sp1
+    //matched to `msr ttbr1` but it has writable stack
+    // b .
+    ldr x2, =el0_stack_base
+    mov sp, x2
+    b _vt_m1n1_call_early
+
+    not_equal_sp1:
+    b _vt_m1n1_call_sp1
+
 .globl _vt_entry
 .type _vt_entry, @function
 _vt_entry:
@@ -442,6 +561,30 @@ _vt_return_orignal_sync:
 
     b _vt_call_orignal_sync
 
+
+.globl _vt_return_orignal_sync_sp1
+.type _vt_return_orignal_sync_sp1, @function
+_vt_return_orignal_sync_sp1:
+    ldp x0, x1, [sp], #16
+    ldp x2, x3, [sp], #16
+    ldp x4, x5, [sp], #16
+    ldp x6, x7, [sp], #16
+    ldp x8, x9, [sp], #16
+    ldp x10, x11, [sp], #16
+    ldp x12, x13, [sp], #16
+    ldp x14, x15, [sp], #16
+    ldp x16, x17, [sp], #16
+    ldp x18, x19, [sp], #16
+    ldp x20, x21, [sp], #16
+    ldp x22, x23, [sp], #16
+    ldp x24, x25, [sp], #16
+    ldp x26, x27, [sp], #16
+    ldp x28, x29, [sp], #16
+    ldr x30, [sp], #16
+
+    add sp, sp, #(SIZEOF_EXC_INFO - 32 * 8)
+
+    b _vt_vectors_el1_sp1_sync
 
 //still a mess below
 
