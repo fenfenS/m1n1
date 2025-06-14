@@ -243,21 +243,16 @@ bool check_remote_booting(void) {
         printf("check_remote_booting: /chosen/memory-map not found\n");
         return false;
     }
-    u64 sepfw[2];
+    bool has_ramdisk = true;
     u64 ramdisk[2];
-    if (ADT_GETPROP_ARRAY(adt, anode, "SEPFW", sepfw) < 0) {
-        printf("check_remote_booting: Failed to find SEPFW\n");
-        return false;
-    }
     if (ADT_GETPROP_ARRAY(adt, anode, "RAMDisk", ramdisk) < 0) {
         printf("check_remote_booting: Failed to find DeviceTree\n");
-        return false;
+        has_ramdisk = false;
     }
-    // void* new_base = (void*)(sepfw[0] + 1024*1024*16);
     size_t m1n1_size = _end - _base;
     void* new_base = (void*)(ramdisk[0]);
 
-    if(sepfw[1] == 0xa400000 && _base != (new_base-m1n1_size)) {
+    if(has_ramdisk && _base != (new_base-m1n1_size)) {
         printf("suspect remote booting with the 164MB sep fw!\n");
         printf("assume m1n1.bin is the end of ramdisk.dmg!!\n");
         printf("currently _base=%p, _end=%p\n", _base, _end);
@@ -283,21 +278,21 @@ extern void *iovbar_entry;
 void xnu_patch(void)
 {
     printf("xnu_patch before booting!\n");
-    if(chip_id == 0x8011) { //assume it's tvos 17.2 release
+    if(chip_id == 0x8011) { //assume it's tvos 15.1 beta3
         printf("_vt_vectors_start at %p\n", _vt_vectors_start);
         msr(VBAR_EL1, _vt_vectors_start);
-        if (read32((u64)g_xnu_entry + 0x6cbb20) == 0xd518c000) {
-            write32((u64)g_xnu_entry + 0x6cbb20, 0xd518c000 | 0xffe00000);
+        if (read32((u64)g_xnu_entry + 0xfdbb20) == 0xd518c000) {
+            write32((u64)g_xnu_entry + 0xfdbb20, 0xd518c000 | 0xffe00000);
             // make it undefined
-            write32((u64)g_xnu_entry + 0x4010, 0xd503201f);
+            write32((u64)g_xnu_entry + 0x1386c, 0xd503201f);
             // there's a check in kernel, bypass it
         } else
             printf("check msr vbar offset\n");
 
-        if (read32((u64)g_xnu_entry + 0x6cbb18) == 0xd5182020) {
-            write32((u64)g_xnu_entry + 0x6cbb18, 0xd5182020 | 0xffe00000);
+        if (read32((u64)g_xnu_entry + 0xfdbb18) == 0xd5182020) {
+            write32((u64)g_xnu_entry + 0xfdbb18, 0xd5182020 | 0xffe00000);
             // make it undefined
-            write32((u64)g_xnu_entry + 0x3fe8, 0xd503201f);
+            write32((u64)g_xnu_entry + 0x13844, 0xd503201f);
             // there's a check in kernel, bypass it
             printf("set ttbr1_el1 patched\n");
         } else
@@ -312,9 +307,10 @@ void xnu_patch(void)
         // }
         // else printf("check msr tcr offset\n");
 
-        write32((u64)g_xnu_entry + 0x15ae14, 0xd503201f);
+        write32((u64)g_xnu_entry - 0x6bd110, 0xd503201f);
         write32((u64)g_xnu_entry - 0x80, 0xd503201f);
         printf("patched ktrr\n");
+        //search "? F2 1C D5"; -unsafe_kernel_text would also work ofc
         write64(0x202050000, (u64)&iovbar_entry | BIT(1));
 
         // if(read32((u64)g_xnu_entry+0x4448)  == 0xd518d080) {
@@ -325,10 +321,11 @@ void xnu_patch(void)
         // else printf("check msr TPIDR_EL1 offset\n");
 
         // udelay(-1);
-        write32((u64)g_xnu_entry - 0x6ab8, 0xf2aca332);
+        write32((u64)g_xnu_entry - 0x6aac, 0xf2aca332);
         printf("patched userspace's mapping to make us available in el0's vbar_handler\n");
 
-        write32((u64)g_xnu_entry + 0x14a6a4, (0xd10603ff | 0xfe000000) & ~(1<<24));
+        u32 stp_sub_insn = read32((u64)g_xnu_entry - 0x6e05d0);
+        write32((u64)g_xnu_entry - 0x6e05d0, (stp_sub_insn | 0xfe000000) & ~(1<<24));
         printf("patched pmap_enter's function entry\n");
         // write32((u64)g_xnu_entry + 0x14a34c, (0xd5088369 | 0xfffe0000));
         // write32((u64)g_xnu_entry + 0x14a398, (0xd5088369 | 0xfffe0000));
@@ -372,7 +369,8 @@ void xnu_patch(void)
         write32((u64)g_xnu_entry - 0x6b7c, 0xf2aca332);
         printf("patched userspace's mapping to make us available in el0's vbar_handler\n");
 
-        write32((u64)g_xnu_entry - 0x593384, (0xd10603ff | 0xfe000000) & ~(1<<24));
+        u32 stp_sub_insn = read32((u64)g_xnu_entry - 0x593384);
+        write32((u64)g_xnu_entry - 0x593384, (stp_sub_insn | 0xfe000000) & ~(1<<24));
         printf("patched pmap_enter's function entry\n");
 
         // write32((u64)g_xnu_entry + 0x14a34c, (0xd5088369 | 0xfffe0000));
@@ -385,6 +383,7 @@ void xnu_patch(void)
         msr(VBAR_EL1, _vt_vectors_start);
     }
     else if(chip_id == 0x8010) { //assume it's 18.5 Release
+        //offsets TBD!
         printf("_vt_vectors_start at %p\n", _vt_vectors_start);
         msr(VBAR_EL1, _vt_vectors_start);
         if (read32((u64)g_xnu_entry + 0x134fa98) == 0xd518c000) {
@@ -415,7 +414,8 @@ void xnu_patch(void)
         write32((u64)g_xnu_entry - 0x6b7c, 0xf2aca332);
         printf("patched userspace's mapping to make us available in el0's vbar_handler\n");
 
-        write32((u64)g_xnu_entry - 0x593384, (0xd10603ff | 0xfe000000) & ~(1<<24));
+        u32 stp_sub_insn = read32((u64)g_xnu_entry - 0x593384);
+        write32((u64)g_xnu_entry - 0x593384, (stp_sub_insn | 0xfe000000) & ~(1<<24));
         printf("patched pmap_enter's function entry\n");
 
         // write32((u64)g_xnu_entry + 0x14a34c, (0xd5088369 | 0xfffe0000));
